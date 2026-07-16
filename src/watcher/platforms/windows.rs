@@ -3,7 +3,6 @@ use std::mem::size_of;
 use std::path::PathBuf;
 use crate::watcher::core::{Window, Desktop, MoonwatcherSignal};
 use anyhow::{bail, Result};
-use ctrlc;
 use windows::core::PWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::StationsAndDesktops::{GetThreadDesktop, SwitchDesktop};
@@ -15,12 +14,14 @@ use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowText
 pub struct WindowsDesktop;
 pub struct WindowsWindow { window_handle: HWND }
 
-unsafe fn parse_lpwstr_from_buffer(buffer: &Vec<u16>) -> String {
+unsafe fn parse_lpwstr_from_buffer(buffer: &[u16]) -> String {
     // https://stackoverflow.com/questions/68185516/proper-handling-of-lpwstr-output-in-windows-rs
     let ptr = buffer.as_ptr();
-    let len = (0..buffer.len()).take_while(|&i| *ptr.offset(i as isize) != 0).count();
-    let slice = std::slice::from_raw_parts(ptr, len);
-    String::from_utf16_lossy(slice)
+    unsafe {
+        let len = (0..buffer.len()).take_while(|&i| *ptr.offset(i as isize) != 0).count();
+        let slice = std::slice::from_raw_parts(ptr, len);
+        String::from_utf16_lossy(slice)
+    }
 }
 
 impl Desktop for WindowsDesktop {
@@ -32,8 +33,7 @@ impl Desktop for WindowsDesktop {
         unsafe {
             let thread_id = GetCurrentThreadId();
             if let Ok(desktop_handle) = GetThreadDesktop(thread_id) {
-                let success = SwitchDesktop(desktop_handle);
-                !success.as_bool()
+                SwitchDesktop(desktop_handle).is_err()
             } else {
                 false
             }
@@ -96,7 +96,7 @@ impl Window for WindowsWindow {
             let mut buffer_size = 1024u32;
             let mut buffer = vec![0u16; buffer_size as usize];
             let success = QueryFullProcessImageNameW(process_handle, PROCESS_NAME_WIN32, PWSTR::from_raw(buffer.as_mut_ptr()), &mut buffer_size);
-            if success.as_bool() {
+            if success.is_ok() {
                 let process_path_str = parse_lpwstr_from_buffer(&buffer);
                 let process_path = PathBuf::from(process_path_str);
                 Ok(process_path)

@@ -2,7 +2,6 @@ use std::collections::LinkedList;
 use std::path::PathBuf;
 use std::time::Duration;
 use chrono::{DateTime, Utc};
-use json;
 use anyhow::Result;
 
 pub trait Window {
@@ -45,8 +44,8 @@ impl ActiveWindowEvent {
         ActiveWindowEvent {
             time: Utc::now(),
             duration,
-            hostname: whoami::hostname(),
-            username: whoami::username(),
+            hostname: whoami::hostname().unwrap_or_default(),
+            username: whoami::username().unwrap_or_default(),
             idle_for,
             window_title,
             process_path,

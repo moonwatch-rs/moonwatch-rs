@@ -4,7 +4,6 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use chrono;
 use moonwatch_rs::watcher;
 use moonwatch_rs::watcher::core::{ActiveWindowEvent, Desktop, MoonwatcherSignal};
 use moonwatch_rs::watcher::config::Config;
@@ -60,12 +59,13 @@ impl MoonwatcherWriter {
 
         // derive name for output file
         let mut hasher = Sha1::new();
-        hasher.update(whoami::hostname());
-        hasher.update(whoami::username());
+        hasher.update(whoami::hostname().unwrap_or_default());
+        hasher.update(whoami::username().unwrap_or_default());
         hasher.update(chrono::Utc::now().timestamp().to_le_bytes());
         hasher.update(b"moonwatcher");
         let hasher_result = hasher.finalize();
-        let filename = format!("{:02x}.jsonl", hasher_result);
+        let hex_digest: String = hasher_result.iter().map(|b| format!("{b:02x}")).collect();
+        let filename = format!("{hex_digest}.jsonl");
         let output_path = config.output_dir.join(filename);
 
         // TODO consider writing .jsonl.gz instead
@@ -76,8 +76,8 @@ impl MoonwatcherWriter {
         while !self.events_to_write.is_empty() {
             let e = self.events_to_write.pop().unwrap();
             let line = e.to_json().dump();
-            fp.write(line.as_str().as_bytes())?;
-            fp.write(b"\n")?;
+            fp.write_all(line.as_bytes())?;
+            fp.write_all(b"\n")?;
         }
 
         Ok(())
