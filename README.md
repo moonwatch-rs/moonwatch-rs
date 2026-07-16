@@ -1,5 +1,7 @@
 # Moonwatch.rs
 
+[![Moonwatch.rs build master branch](https://img.shields.io/github/actions/workflow/status/tkarabela/moonwatch-rs/ci.yml?branch=master)](https://github.com/tkarabela/moonwatch-rs/actions)
+
 🚧 _This is an early development version of the software._ 🚧
 
 Moonwatch.rs is a privacy-focused digital wellbeing app. Get insights into how you
