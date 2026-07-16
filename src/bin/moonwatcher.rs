@@ -8,7 +8,7 @@ use moonwatch_rs::watcher;
 use moonwatch_rs::watcher::core::{ActiveWindowEvent, Desktop, MoonwatcherSignal};
 use moonwatch_rs::watcher::config::Config;
 use anyhow::Result;
-use sha1::{Sha1, Digest};
+use uuid::Uuid;
 use clap::Parser;
 
 #[derive(Debug)]
@@ -58,14 +58,8 @@ impl MoonwatcherWriter {
         }
 
         // derive name for output file
-        let mut hasher = Sha1::new();
-        hasher.update(whoami::hostname().unwrap_or_default());
-        hasher.update(whoami::username().unwrap_or_default());
-        hasher.update(chrono::Utc::now().timestamp().to_le_bytes());
-        hasher.update(b"moonwatcher");
-        let hasher_result = hasher.finalize();
-        let hex_digest: String = hasher_result.iter().map(|b| format!("{b:02x}")).collect();
-        let filename = format!("{hex_digest}.jsonl");
+        let id = Uuid::now_v7();
+        let filename = format!("{id}.jsonl");
         let output_path = config.output_dir.join(filename);
 
         // TODO consider writing .jsonl.gz instead
@@ -211,4 +205,57 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_writer_writes_expected_line_to_temp_dir() {
+        // Unique temp dir that does not exist yet, so write() also exercises
+        // its output-directory creation branch.
+        let output_dir = std::env::temp_dir().join(format!("moonwatch-test-{}", Uuid::now_v7()));
+        assert!(!output_dir.exists());
+
+        let config = Config {
+            output_dir: output_dir.clone(),
+            sample_every: Duration::from_secs(15),
+            write_every: Duration::from_secs(60),
+            tags: vec![],
+            ignore: vec![],
+            anonymize: vec![],
+        };
+
+        let event = ActiveWindowEvent::new(
+            Duration::from_secs(5),
+            "Test Window".to_string(),
+            PathBuf::from("/path/to/app"),
+            Duration::from_secs(1),
+        );
+        // Capture the expected serialization before pushing: write() drains the
+        // buffer and ActiveWindowEvent is not Clone.
+        let expected_line = event.to_json().dump();
+
+        let mut writer = MoonwatcherWriter::new();
+        writer.push(event);
+        writer.write(&config).expect("write() should succeed");
+
+        // Exactly one .jsonl file should have been produced.
+        let jsonl_files: Vec<PathBuf> = fs::read_dir(&output_dir)
+            .expect("output dir should exist after write()")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
+            .collect();
+        assert_eq!(jsonl_files.len(), 1, "expected exactly one .jsonl file");
+
+        let contents = fs::read_to_string(&jsonl_files[0]).expect("read output file");
+        assert_eq!(contents, format!("{expected_line}\n"));
+        assert!(contents.contains(r#""type":"ActiveWindowEvent""#));
+        assert!(contents.contains("/path/to/app"));
+
+        // Clean up.
+        fs::remove_dir_all(&output_dir).ok();
+    }
 }
