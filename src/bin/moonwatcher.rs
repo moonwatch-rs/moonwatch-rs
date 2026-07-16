@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 use moonwatch_rs::watcher;
-use moonwatch_rs::watcher::core::{ActiveWindowEvent, Desktop, MoonwatcherSignal};
+use moonwatch_rs::watcher::core::{ActiveWindowEventV1, Desktop, MoonwatcherSignal};
 use moonwatch_rs::watcher::config::Config;
 use anyhow::Result;
 use uuid::Uuid;
@@ -14,7 +14,7 @@ use clap::Parser;
 #[derive(Debug)]
 enum ActiveWindowEventResult {
     DesktopLocked,
-    Window { e: ActiveWindowEvent }
+    Window { e: ActiveWindowEventV1 }
 }
 
 fn get_window_event(desktop: &dyn Desktop, duration: Duration) -> Result<ActiveWindowEventResult> {
@@ -26,13 +26,13 @@ fn get_window_event(desktop: &dyn Desktop, duration: Duration) -> Result<ActiveW
         let process_path = window.get_process_path()?;
         let window_title = window.get_title().unwrap_or_default();
 
-        let e = ActiveWindowEvent::new(idle_duration, window_title, process_path, duration);
+        let e = ActiveWindowEventV1::new(idle_duration, window_title, process_path, duration);
         Ok(ActiveWindowEventResult::Window { e })
     }
 }
 
 struct MoonwatcherWriter {
-    events_to_write: Vec<ActiveWindowEvent>
+    events_to_write: Vec<ActiveWindowEventV1>
 }
 
 impl MoonwatcherWriter {
@@ -42,7 +42,7 @@ impl MoonwatcherWriter {
         }
     }
 
-    pub fn push(&mut self, e: ActiveWindowEvent) {
+    pub fn push(&mut self, e: ActiveWindowEventV1) {
         self.events_to_write.push(e)
     }
 
@@ -69,7 +69,7 @@ impl MoonwatcherWriter {
         let mut fp = fs::File::create(output_path)?;
         while !self.events_to_write.is_empty() {
             let e = self.events_to_write.pop().unwrap();
-            let line = e.to_json().dump();
+            let line = e.to_json().to_string();
             fp.write_all(line.as_bytes())?;
             fp.write_all(b"\n")?;
         }
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
                         };
 
                         // fill in event according to config
-                        e.anonymize = config.anonymize.iter().any(|m| m.matches(&e));
+                        e._anonymize = config.anonymize.iter().any(|m| m.matches(&e));
                         for t in &config.tags {
                             if t.matcher.matches(&e) && !e.tags.contains(&t.tag) {
                                 e.tags.push_back(t.tag.clone())
@@ -227,7 +227,7 @@ mod tests {
             anonymize: vec![],
         };
 
-        let event = ActiveWindowEvent::new(
+        let event = ActiveWindowEventV1::new(
             Duration::from_secs(5),
             "Test Window".to_string(),
             PathBuf::from("/path/to/app"),
@@ -235,7 +235,7 @@ mod tests {
         );
         // Capture the expected serialization before pushing: write() drains the
         // buffer and ActiveWindowEvent is not Clone.
-        let expected_line = event.to_json().dump();
+        let expected_line = event.to_json().to_string();
 
         let mut writer = MoonwatcherWriter::new();
         writer.push(event);
@@ -252,7 +252,7 @@ mod tests {
 
         let contents = fs::read_to_string(&jsonl_files[0]).expect("read output file");
         assert_eq!(contents, format!("{expected_line}\n"));
-        assert!(contents.contains(r#""type":"ActiveWindowEvent""#));
+        assert!(contents.contains(r#""type":"ActiveWindowEventV1""#));
         assert!(contents.contains("/path/to/app"));
 
         // Clean up.

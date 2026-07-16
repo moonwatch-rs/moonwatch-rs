@@ -24,7 +24,7 @@ pub trait Desktop {
 }
 
 #[derive(Debug)]
-pub struct ActiveWindowEvent {
+pub struct ActiveWindowEventV1 {
     pub time: DateTime::<Utc>,
     pub duration: Duration,
     pub hostname: String,
@@ -33,15 +33,15 @@ pub struct ActiveWindowEvent {
     pub window_title: String,
     pub process_path: PathBuf,
     pub tags: LinkedList<String>,
-    pub anonymize: bool,
+    pub _anonymize: bool,
 }
 
-impl ActiveWindowEvent {
+impl ActiveWindowEventV1 {
     pub fn new(idle_for: Duration,
                window_title: String,
                process_path: PathBuf,
-               duration: Duration) -> ActiveWindowEvent {
-        ActiveWindowEvent {
+               duration: Duration) -> ActiveWindowEventV1 {
+        ActiveWindowEventV1 {
             time: Utc::now(),
             duration,
             hostname: whoami::hostname().unwrap_or_default(),
@@ -50,36 +50,31 @@ impl ActiveWindowEvent {
             window_title,
             process_path,
             tags: LinkedList::new(),
-            anonymize: false,
+            _anonymize: false,
         }
     }
 
-    pub fn to_json(&self) -> json::JsonValue {
-        let tags: Vec<String> = self.tags.iter().map(|x| String::from(x)).collect();
+    pub fn to_json(&self) -> serde_json::Value {
+        let tags: Vec<String> = self.tags.iter().cloned().collect();
 
-        if self.anonymize {
-            json::object! {
-                "type": "ActiveWindowEvent",
-                "time": self.time.to_rfc3339(),
-                "duration": self.duration.as_secs_f32().round(),
-                "hostname": self.hostname.as_str(),
-                "username": self.username.as_str(),
-                "idle_for": self.idle_for.as_secs_f32().round(),
-                "process_path": json::Null,
-                "tags": tags,
-            }
+        let process_path = if self._anonymize {
+            serde_json::Value::Null
         } else {
-            json::object! {
-                "type": "ActiveWindowEvent",
-                "time": self.time.to_rfc3339(),
+            serde_json::Value::from(self.process_path.to_str().unwrap_or(""))
+        };
+
+        serde_json::json!({
+            "type": "ActiveWindowEventV1",
+            "time": self.time.to_rfc3339(),
+            "data": {
                 "duration": self.duration.as_secs_f32().round(),
-                "hostname": self.hostname.as_str(),
-                "username": self.username.as_str(),
-                "idle_for": self.idle_for.as_secs_f32().round(),
-                "process_path": self.process_path.to_str().unwrap_or(""),
+                "hostname": self.hostname,
+                "username": self.username,
+                "idleFor": self.idle_for.as_secs_f32().round(),
+                "processPath": process_path,
                 "tags": tags,
             }
-        }
+        })
     }
 }
 
@@ -87,4 +82,61 @@ impl ActiveWindowEvent {
 pub enum MoonwatcherSignal {
     ReloadConfig,
     Terminate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Compile-time JSON Schema (draft 2020-12) validator, built from the
+    /// checked-in schema. Used only in tests to assert that serialized events
+    /// conform to `src/schema/events/ActiveWindowEventV1.json`.
+    #[jsonschema::validator(path = "src/schema/events/ActiveWindowEventV1.json", draft = Draft202012)]
+    struct ActiveWindowEventSchema;
+
+    fn sample_event() -> ActiveWindowEventV1 {
+        ActiveWindowEventV1::new(
+            Duration::from_secs(5),
+            "Test Window".to_string(),
+            PathBuf::from("/path/to/app"),
+            Duration::from_secs(15),
+        )
+    }
+
+    #[test]
+    fn to_json_without_anonymize_keeps_process_path_and_matches_schema() {
+        let event = sample_event();
+        assert!(!event._anonymize);
+        let value = event.to_json();
+
+        assert_eq!(value["type"].as_str(), Some("ActiveWindowEventV1"));
+        assert_eq!(value["data"]["processPath"].as_str(), Some("/path/to/app"));
+        assert!(value["time"].is_string());
+        assert!(value["data"]["duration"].is_number());
+        assert!(value["data"]["idleFor"].is_number());
+        assert_eq!(value["data"]["tags"], serde_json::json!([]));
+
+        ActiveWindowEventSchema::validate(&value)
+            .expect("serialized event should be valid against the schema");
+    }
+
+    #[test]
+    fn to_json_with_anonymize_nulls_process_path_and_matches_schema() {
+        let mut event = sample_event();
+        event._anonymize = true;
+        let value = event.to_json();
+
+        assert_eq!(value["type"].as_str(), Some("ActiveWindowEventV1"));
+        assert!(
+            value["data"]["processPath"].is_null(),
+            "processPath should be null when anonymized, got {:?}",
+            value["data"]["processPath"]
+        );
+        // The remaining fields are still present and unredacted.
+        assert!(value["data"]["hostname"].is_string());
+        assert!(value["data"]["username"].is_string());
+
+        ActiveWindowEventSchema::validate(&value)
+            .expect("anonymized event should be valid against the schema");
+    }
 }

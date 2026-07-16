@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use regex::Regex;
 use anyhow::{anyhow, bail, Result};
-use json::JsonValue;
-use crate::watcher::core::ActiveWindowEvent;
+use serde_json::Value;
+use crate::watcher::core::ActiveWindowEventV1;
 
 #[derive(Debug)]
 pub struct WindowEventMatcher {
@@ -19,7 +19,7 @@ pub struct ConfigTag {
 }
 
 impl WindowEventMatcher {
-    pub fn matches(&self, e: &ActiveWindowEvent) -> bool {
+    pub fn matches(&self, e: &ActiveWindowEventV1) -> bool {
         if let Some(tmp) = &self.window_title_regex {
             if !tmp.is_match(e.window_title.as_str()) {
                 return false;
@@ -37,7 +37,7 @@ impl WindowEventMatcher {
         true
     }
 
-    pub fn from_json_single(val: &JsonValue) -> Result<WindowEventMatcher> {
+    pub fn from_json_single(val: &Value) -> Result<WindowEventMatcher> {
         if !val.is_object() {
             bail!("WindowEventMatcher definition should be an object, not {:?}", val);
         }
@@ -63,11 +63,11 @@ impl WindowEventMatcher {
         })
     }
 
-    pub fn from_json(val: &JsonValue) -> Result<Vec<WindowEventMatcher>> {
-        if val.is_array() {
+    pub fn from_json(val: &Value) -> Result<Vec<WindowEventMatcher>> {
+        if let Some(arr) = val.as_array() {
             let mut matchers = Vec::<WindowEventMatcher>::new();
 
-            for v in val.members() {
+            for v in arr {
                 matchers.push(WindowEventMatcher::from_json_single(v)?);
             }
 
@@ -102,7 +102,7 @@ pub struct BaseConfig {
 impl Config {
     pub fn from_file(path: &Path) -> Result<Config> {
         let data = fs::read_to_string(path)?;
-        let d = json::parse(data.as_str())?;
+        let d = serde_json::from_str::<Value>(&data)?;
 
         let mut tags = Config::read_tags(&d["tags"])?;
         let mut ignore = WindowEventMatcher::from_json(&d["ignore"])?;
@@ -126,8 +126,8 @@ impl Config {
 
         let relative_output_dir = PathBuf::from(d["main"]["output_dir"].as_str().ok_or(anyhow!("cannot read output_dir"))?);
         let output_dir = path.parent().unwrap().join(relative_output_dir);
-        let sample_every = Duration::from_secs_f32(d["main"]["sample_every_sec"].as_f32().ok_or(anyhow!("cannot read sample_every_sec"))?);
-        let write_every = Duration::from_secs_f32(d["main"]["write_every_sec"].as_f32().ok_or(anyhow!("cannot read write_every_sec"))?);
+        let sample_every = Duration::from_secs_f32(d["main"]["sample_every_sec"].as_f64().ok_or(anyhow!("cannot read sample_every_sec"))? as f32);
+        let write_every = Duration::from_secs_f32(d["main"]["write_every_sec"].as_f64().ok_or(anyhow!("cannot read write_every_sec"))? as f32);
 
         Ok(Config {
             output_dir,
@@ -139,18 +139,18 @@ impl Config {
         })
     }
 
-    pub fn read_tags(obj: &JsonValue) -> Result<Vec<ConfigTag>> {
+    pub fn read_tags(obj: &Value) -> Result<Vec<ConfigTag>> {
         if obj.is_null() {
             return Ok(vec![]);
         }
 
-        if !obj.is_object() {
+        let Some(entries) = obj.as_object() else {
             bail!("JSON value of 'tags' key must be JSON object or null");
-        }
+        };
 
         let mut tags = Vec::<ConfigTag>::new();
 
-        for (key, val) in obj.entries() {
+        for (key, val) in entries {
             let matchers = WindowEventMatcher::from_json(val)?;
 
             for matcher in matchers {
@@ -168,7 +168,7 @@ impl Config {
 impl BaseConfig {
     pub fn from_file(path: &Path) -> Result<BaseConfig> {
         let data = fs::read_to_string(path)?;
-        let d = json::parse(data.as_str())?;
+        let d = serde_json::from_str::<Value>(&data)?;
 
         let tags = Config::read_tags(&d["tags"])?;
         let ignore = WindowEventMatcher::from_json(&d["ignore"])?;
