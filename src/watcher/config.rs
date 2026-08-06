@@ -27,10 +27,13 @@ impl WindowEventMatcher {
         }
 
         if let Some(tmp) = &self.process_path_regex {
-            if let Some(path) = e.process_path.to_str() {
-                if !tmp.is_match(path) {
-                    return false;
-                }
+            // An event whose path is unknown (or not representable as UTF-8) is tested
+            // against the empty string, so it does not match. Skipping the test instead
+            // would make such an event match every process_path rule - an "ignore" rule
+            // would then quietly discard it.
+            let path = e.process_path.as_deref().and_then(|path| path.to_str()).unwrap_or("");
+            if !tmp.is_match(path) {
+                return false;
             }
         }
 
@@ -175,5 +178,57 @@ impl BaseConfig {
         let anonymize = WindowEventMatcher::from_json(&d["anonymize"])?;
 
         Ok(BaseConfig { tags, ignore, anonymize })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(process_path: Option<&str>) -> ActiveWindowEventV1 {
+        ActiveWindowEventV1::new(
+            Duration::from_secs(0),
+            "Some Window".to_string(),
+            process_path.map(PathBuf::from),
+            Duration::from_secs(15),
+        )
+    }
+
+    fn matcher(json: &str) -> WindowEventMatcher {
+        WindowEventMatcher::from_json_single(&serde_json::from_str(json).expect("valid JSON"))
+            .expect("valid matcher")
+    }
+
+    #[test]
+    fn process_path_matcher_matches_on_the_path() {
+        let firefox = matcher(r#"{"process_path": "firefox(\\.exe)?$"}"#);
+
+        assert!(firefox.matches(&event(Some("/usr/bin/firefox"))));
+        assert!(!firefox.matches(&event(Some("/usr/bin/chrome"))));
+    }
+
+    /// An event whose path could not be determined (an elevated process, say) is tested
+    /// against the empty string, so a rule naming a program does not match it. Skipping the
+    /// test instead would make it match *every* process_path rule, and a single "ignore"
+    /// entry would then quietly discard all such events.
+    ///
+    /// A pattern that matches the empty string still matches, which is the right reading of
+    /// a deliberate catch-all like `".*"`.
+    #[test]
+    fn process_path_matcher_does_not_match_an_unknown_path() {
+        assert!(!matcher(r#"{"process_path": "firefox"}"#).matches(&event(None)));
+        assert!(!matcher(r#"{"process_path": "^/usr/bin/"}"#).matches(&event(None)));
+        assert!(matcher(r#"{"process_path": ".*"}"#).matches(&event(None)),
+                "a catch-all is meant to catch everything");
+    }
+
+    /// AND semantics across the predicates of one matcher are unaffected by the path being
+    /// unknown: the title still has to match as well.
+    #[test]
+    fn a_title_only_matcher_still_works_without_a_path() {
+        let by_title = matcher(r#"{"window_title": "^Some"}"#);
+
+        assert!(by_title.matches(&event(None)));
+        assert!(!matcher(r#"{"window_title": "^Other"}"#).matches(&event(None)));
     }
 }

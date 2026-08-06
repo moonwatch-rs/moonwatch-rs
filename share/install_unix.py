@@ -16,6 +16,24 @@ for cmd in (["gnome-screensaver", "-h"], ["xprintidle", "-v"], ["xdotool", "-v"]
         print("Warning -", cmd, "failed, please install it before using moonwatch-rs")
         sys.exit(1)
 
+print("Testing availability of tray icon libraries (optional)")
+try:
+    shared_libs = subprocess.check_output(["ldconfig", "-p"]).decode("utf-8", "replace")
+except (OSError, subprocess.CalledProcessError):
+    shared_libs = None
+    print("  could not run ldconfig, skipping check")
+
+if shared_libs is not None:
+    if "libgtk-3.so.0" not in shared_libs:
+        print("  missing libgtk-3 (Debian/Ubuntu: libgtk-3-0)")
+    if not any(lib in shared_libs for lib in ("libayatana-appindicator3.so.1",
+                                              "libappindicator3.so.1")):
+        print("  missing libappindicator (Debian/Ubuntu: libayatana-appindicator3-1)")
+
+print("  note: moonwatcher runs fine without these, it just has no tray icon;")
+print("        on GNOME the icon also needs the 'AppIndicator and KStatusNotifierItem")
+print("        Support' shell extension (shipped by default on Ubuntu)")
+
 print("Stopping moonwatch-rs service")
 rv = subprocess.call(["systemctl", "--user", "stop", "moonwatch-rs"])
 print("systemctl returned code", rv)
