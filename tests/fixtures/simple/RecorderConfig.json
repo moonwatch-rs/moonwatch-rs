@@ -1,0 +1,59 @@
+{
+  "activeWindowEventRules": [
+    {
+      "predicate": {
+        "attributeRegex": {
+          "name": "processName",
+          "regex": "chrome|firefox"
+        }
+      },
+      "actions": [
+        {
+          "addTag": "browser"
+        }
+      ]
+    },
+    {
+      "predicate": {
+        "and": [
+          {
+            "hasTag": "browser"
+          },
+          {
+            "attributeRegex": {
+              "name": "windowTitle",
+              "regex": " - YouTube$"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "addTag": "youtube"
+        }
+      ]
+    },
+    {
+      "predicate": {
+        "attributeValue": {
+          "name": "processName",
+          "value": "bad"
+        }
+      },
+      "actions": [
+        "redactProcess"
+      ]
+    },
+    {
+      "predicate": {
+        "attributeValue": {
+          "name": "processName",
+          "value": "program"
+        }
+      },
+      "actions": [
+        "delete"
+      ]
+    }
+  ]
+}

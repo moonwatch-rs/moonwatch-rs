@@ -1,0 +1,8 @@
+{
+  "logDirectory": ".",
+  "logOutputSubdirectory": ".",
+  "sampleEverySec": 10,
+  "writeEverySec": 100,
+  "recorderConfigPath": "./RecorderConfig.json",
+  "pipelineConfigPath": null
+}

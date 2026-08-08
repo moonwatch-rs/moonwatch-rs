@@ -1,0 +1,4 @@
+{"type":"ActiveWindowEventV1","time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":"/bin/firefox","tags":["browser"]}}
+{"type":"ActiveWindowEventV1","time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":"/bin/firefox","tags":["browser","youtube"]}}
+{"type":"ActiveWindowEventV1","time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":"/bin/chrome","tags":["browser"]}}
+{"type":"ActiveWindowEventV1","time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":null,"tags":[]}}

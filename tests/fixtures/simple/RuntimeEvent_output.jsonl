@@ -1,0 +1,4 @@
+{"activeWindowEvent":{"time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":"/bin/firefox","tags":["browser"]},"windowTitle":"Some website about YouTube and something else"}}
+{"activeWindowEvent":{"time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":"/bin/firefox","tags":["browser","youtube"]},"windowTitle":"Some video - YouTube"}}
+{"activeWindowEvent":{"time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":"/bin/chrome","tags":["browser"]},"windowTitle":"Other website"}}
+{"activeWindowEvent":{"time":"1970-01-01T00:00:00Z","data":{"duration":10,"hostname":"machine","username":"user","idleFor":0,"processPath":null,"tags":[]},"windowTitle":"Bad program"}}

@@ -3,7 +3,6 @@ pub mod platforms;
 pub mod config;
 pub mod status;
 pub mod tray;
-pub mod models;
 
 use std::path::Path;
 use anyhow::Result;
