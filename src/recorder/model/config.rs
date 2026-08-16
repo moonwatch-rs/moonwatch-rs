@@ -1,7 +1,9 @@
+use chrono::TimeDelta;
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use crate::sampler::model::event::RuntimeActiveEventStringAttribute;
+use serde_with::{serde_as, DurationSeconds};
+use crate::sampler::model::event::RuntimeActiveWindowEventStringAttribute;
 use crate::core::common::{serialize_regex, deserialize_regex};
 
 /// This configuration defines rules for processing sampled events
@@ -59,7 +61,7 @@ pub enum RecorderActiveWindowEventPredicate {
     AttributeValue {
         /// # Attribute name
         /// Name of string attribute to be checked.
-        name: RuntimeActiveEventStringAttribute,
+        name: RuntimeActiveWindowEventStringAttribute,
 
         /// # Value
         /// Attribute value must match exactly.
@@ -69,7 +71,7 @@ pub enum RecorderActiveWindowEventPredicate {
     AttributeRegex {
         /// # Attribute name
         /// Name of string attribute to be checked.
-        name: RuntimeActiveEventStringAttribute,
+        name: RuntimeActiveWindowEventStringAttribute,
 
         /// # Regular expression
         /// Attribute value must match this regular expression.

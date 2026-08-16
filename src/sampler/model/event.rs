@@ -23,7 +23,7 @@ pub struct RuntimeActiveWindowEvent {
 
 #[derive(PartialEq, Debug, Serialize, Deserialize, Clone, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub enum RuntimeActiveEventStringAttribute {
+pub enum RuntimeActiveWindowEventStringAttribute {
     WindowTitle,
     ProcessPath,
     ProcessName,
@@ -32,13 +32,13 @@ pub enum RuntimeActiveEventStringAttribute {
 }
 
 impl RuntimeActiveWindowEvent {
-    pub fn extract_string_attribute(self: &Self, attribute: &RuntimeActiveEventStringAttribute) -> Option<String> {
+    pub fn extract_string_attribute(self: &Self, attribute: &RuntimeActiveWindowEventStringAttribute) -> Option<String> {
         match attribute {
-            RuntimeActiveEventStringAttribute::WindowTitle => Some(self.window_title.clone()),
-            RuntimeActiveEventStringAttribute::ProcessPath => self.data.process_path.clone(),
-            RuntimeActiveEventStringAttribute::ProcessName => self.get_process_name(),
-            RuntimeActiveEventStringAttribute::Hostname => Some(self.data.hostname.clone()),
-            RuntimeActiveEventStringAttribute::Username => Some(self.data.username.clone()),
+            RuntimeActiveWindowEventStringAttribute::WindowTitle => Some(self.window_title.clone()),
+            RuntimeActiveWindowEventStringAttribute::ProcessPath => self.data.process_path.clone(),
+            RuntimeActiveWindowEventStringAttribute::ProcessName => self.get_process_name(),
+            RuntimeActiveWindowEventStringAttribute::Hostname => Some(self.data.hostname.clone()),
+            RuntimeActiveWindowEventStringAttribute::Username => Some(self.data.username.clone()),
         }
     }
 

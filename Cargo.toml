@@ -32,6 +32,7 @@ serde_with = { version = "3.21.0" ,features = ["chrono_0_4"] }
 serde_derive = "1.0.229"
 uuidv7 = "0.1.7"
 jsonschema = { version = "0.48.0", default-features = false, features = ["macros"] }
+polars = { version = "0.55.2", features = ["default", "lazy", "strings", "regex", "is_in"] }
 
 [dev-dependencies]
 tempfile = "3.12"
