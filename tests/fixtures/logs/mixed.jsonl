@@ -1,0 +1,3 @@
+{"type":"ActiveWindowEvent","time":"2026-08-17T12:00:00Z","duration":10,"hostname":"box","username":"tom","idle_for":0,"process_path":"/bin/bash","tags":[]}
+{"type":"ActiveWindowEventV1","time":"2026-08-17T12:00:10Z","data":{"duration":10,"hostname":"box","username":"tom","idleFor":0,"processPath":"/bin/htop","tags":["term"]}}
+{"type":"DeviceUnlockEventV1","time":"2026-08-17T12:00:20Z","data":{"hostname":"box"}}

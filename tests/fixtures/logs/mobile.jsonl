@@ -1,0 +1,3 @@
+{"type":"ActiveActivityEventV1","time":"2026-08-17T11:00:00Z","data":{"duration":137,"hostname":"pixel","applicationLabel":"Firefox","applicationId":"org.mozilla.firefox"}}
+{"type":"DeviceUnlockEventV1","time":"2026-08-17T11:05:00Z","data":{"hostname":"pixel"}}
+{"type":"ActiveActivityEventV1","time":"2026-08-17T11:05:01Z","data":{"duration":60,"hostname":"pixel","applicationLabel":"Signal","applicationId":"org.thoughtcrime.securesms"}}

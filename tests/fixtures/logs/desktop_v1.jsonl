@@ -1,0 +1,3 @@
+{"type":"ActiveWindowEventV1","time":"2026-08-17T09:00:00Z","data":{"duration":15,"hostname":"desktop","username":"tom","idleFor":0,"processPath":"C:\\Program Files\\Mozilla Firefox\\firefox.exe","tags":["browser"]}}
+{"type":"ActiveWindowEventV1","time":"2026-08-17T09:00:15Z","data":{"duration":15,"hostname":"desktop","username":"tom","idleFor":300,"processPath":"/usr/bin/Code","tags":[]}}
+{"type":"ActiveWindowEventV1","time":"2026-08-17T09:00:30Z","data":{"duration":15,"hostname":"desktop","username":"tom","idleFor":0,"processPath":null,"tags":["redacted"]}}

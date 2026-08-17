@@ -1,0 +1,2 @@
+{"type":"ActiveWindowEvent","time":"2026-08-17T10:00:00+00:00","duration":15.0,"hostname":"laptop","username":"tom","idle_for":3.0,"process_path":"/bin/vim","tags":["editor"]}
+{"type":"ActiveWindowEvent","time":"2026-08-17T10:00:15+00:00","duration":15.0,"hostname":"laptop","username":"tom","idle_for":0.0,"process_path":"C:\\Windows\\explorer.EXE","tags":[]}

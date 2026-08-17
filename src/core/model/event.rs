@@ -1,6 +1,7 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_with::formats::Flexible;
 use serde_with::{serde_as, DurationSeconds};
 
 /// Events logged by Moonwatch (on-disk representation)
@@ -46,7 +47,7 @@ pub enum Event {
         /// Inferred duration for which the window was active - Moonwatch samples at frequent regular
         /// intervals and we assume that the window was active during the whole sampling interval.
         /// In the logs, it will look like the duration for all desktop events is the same - this is normal.
-        #[serde_as(as = "DurationSeconds<i64>")]
+        #[serde_as(as = "DurationSeconds<i64, Flexible>")]
         #[schemars(with = "i64", range(min = 0))]
         duration: TimeDelta,
 
@@ -61,7 +62,7 @@ pub enum Event {
         /// # Idle for (in seconds)
         /// Amount of time since last user interaction at `time`. This can be subsequently used
         /// to filter out periods of inactivity from the logs.
-        #[serde_as(as = "DurationSeconds<i64>")]
+        #[serde_as(as = "DurationSeconds<i64, Flexible>")]
         #[schemars(with = "i64")]
         idle_for: TimeDelta,
 
@@ -113,7 +114,7 @@ pub struct ActiveWindowEventV1Data {
     /// Inferred duration for which the window was active - Moonwatch samples at frequent regular
     /// intervals and we assume that the window was active during the whole sampling interval.
     /// In the logs, it will look like the duration for all desktop events is the same - this is normal.
-    #[serde_as(as = "DurationSeconds<i64>")]
+    #[serde_as(as = "DurationSeconds<i64, Flexible>")]
     #[schemars(with = "i64", range(min = 0))]
     pub duration: TimeDelta,
 
@@ -128,7 +129,7 @@ pub struct ActiveWindowEventV1Data {
     /// # Idle for (in seconds)
     /// Amount of time since last user interaction at `time`. This can be subsequently used
     /// to filter out periods of inactivity from the logs.
-    #[serde_as(as = "DurationSeconds<i64>")]
+    #[serde_as(as = "DurationSeconds<i64, Flexible>")]
     #[schemars(with = "i64")]
     pub idle_for: TimeDelta,
 
@@ -151,7 +152,7 @@ pub struct ActiveActivityEventV1Data {
     /// # Duration (in seconds)
     /// Duration for which the Android app window (activity) was in the foreground.
     /// Since this is based on OS tracking, it is a precise value with no particular upper bound.
-    #[serde_as(as = "DurationSeconds<i64>")]
+    #[serde_as(as = "DurationSeconds<i64, Flexible>")]
     #[schemars(with = "i64", range(min = 0))]
     pub duration: TimeDelta,
 
