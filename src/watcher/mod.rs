@@ -58,8 +58,11 @@ pub fn install_signal_handlers(worker: WorkerHandle) -> Result<()> {
 ///
 /// Returns `Err` if no event loop could be started at all, which the caller should treat
 /// as "keep watching without a tray icon".
-pub fn run_event_loop<T: UiRefresh>(worker: WorkerHandle,
-                                    build_tray: Option<impl FnOnce() -> Result<T>>) -> Result<()> {
+// The `'static` bound is what the unix backend needs: it keeps the tray alive in an `Rc`
+// for as long as the GTK loop runs. Windows does not need it, but the wrapper has to
+// satisfy both.
+pub fn run_event_loop<T: UiRefresh + 'static>(worker: WorkerHandle,
+                                              build_tray: Option<impl FnOnce() -> Result<T>>) -> Result<()> {
     #[cfg(unix)]
     return platforms::linux::run_event_loop(worker, build_tray);
 
