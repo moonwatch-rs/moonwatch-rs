@@ -96,7 +96,7 @@ impl MoonwatchLogParser {
         }
     }
 
-    pub fn get_input_lazy_df(&self) -> Result<LazyFrame> {
+    pub fn get_input_lf(&self) -> Result<LazyFrame> {
         let paths = self
             .input_paths
             .iter()
@@ -112,7 +112,7 @@ impl MoonwatchLogParser {
             .map_err(polars_err)
     }
 
-    pub fn extract_active_event_df(lf: LazyFrame) -> LazyFrame {
+    pub fn get_active_event_lf(lf: LazyFrame) -> LazyFrame {
         let schema = output_active_event_schema();
         let active_event_types = Series::new(
             "type".into(),
@@ -201,7 +201,7 @@ impl MoonwatchLogParser {
             )
     }
 
-    pub fn extract_unlock_event_df(lf: LazyFrame) -> LazyFrame {
+    pub fn get_unlock_event_lf(lf: LazyFrame) -> LazyFrame {
         let schema = output_unlock_event_schema();
 
         lf.filter(col("type").eq(lit(DEVICE_UNLOCK_EVENT_V1)))

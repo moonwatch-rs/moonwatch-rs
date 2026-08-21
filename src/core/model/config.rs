@@ -1,8 +1,19 @@
-use std::path::PathBuf;
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use crate::pipeline::model::config::PipelineConfig;
+use anyhow::{Context, Result};
+use crate::pipeline::model::config::PipelineTransformConfig;
 use crate::recorder::model::config::RecorderConfig;
+
+
+pub(crate) fn default_main_config() -> String {
+    "./main_config.json".to_string()
+}
+
+pub(crate) fn default_main_config_schema() -> String {
+    "./schemas/main_config.schema.json".to_string()
+}
 
 /// This is the entrypoint to Moonwatch configuration.
 /// It describes how events are logged and stored on this particular machine.
@@ -13,6 +24,10 @@ use crate::recorder::model::config::RecorderConfig;
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MainConfig {
+    #[serde(rename = "$schema", default = "default_main_config_schema")]
+    #[schemars(skip)]
+    pub schema: String,
+    
     /// # Log directory
     /// Path to directory where all Moonwatch logs are stored.
     /// This will typically point to some kind of synchronized directory across devices.
@@ -56,17 +71,102 @@ pub struct MainConfig {
     /// configuration.
     #[schemars(example = &"./pipeline.json")]
     pub pipeline_config_path: Option<String>,
+
+    /// # Pipeline output directory
+    /// Moonwatch defines an ETL-like pipeline for further data analysis, as defined by
+    /// `pipeline_config_path`. This is the directory where the resulting flat files
+    /// will be stored. Relative path is interpreted as relative to the directory
+    /// with this configuration file.
+    #[schemars(example = &"./output")]
+    pub pipeline_output_directory: String,
+
+    /// # Pipeline output format
+    /// Moonwatch defines an ETL-like pipeline for further data analysis, as defined by
+    /// `pipeline_config_path`. This is the format of the resulting flat files.
+    pub pipeline_output_format: PipelineOutputFormat,
+}
+
+impl MainConfig {
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
+        let file = File::open(path)?;
+        let config: Self = serde_json::from_reader(file)?;
+        Ok(config)
+    }
 }
 
 #[derive(Debug)]
 pub struct Config {
     pub main_config: MainConfig,
     pub recorder_config: RecorderConfig,
-    pub pipeline_config: PipelineConfig,
+    pub pipeline_config: PipelineTransformConfig,
 
     /// Absolute path to directory with all Moonwatch logs.
     pub log_directory: PathBuf,
 
     /// Absolute path to directory with where this instance of Moonwatch should write its logs.
     pub log_output_subdirectory: PathBuf,
+
+    /// Absolute path to directory where Moonwatch should dump results of its ETL pipeline.
+    pub pipeline_output_directory: PathBuf,
+}
+
+impl Config {
+    pub fn from_file(main_config_path: impl AsRef<Path>) -> Result<Self> {
+        let main_config_path = main_config_path.as_ref();
+        let main_config = MainConfig::from_file(main_config_path)?;
+
+        let recorder_config: RecorderConfig = match &main_config.recorder_config_path {
+            None => RecorderConfig::new(),
+            Some(path) => {
+                let recorder_config_path = main_config_path
+                    .parent()
+                    .context("cannot get parent of recorder_config_path")?
+                    .join(path);
+                RecorderConfig::from_file(recorder_config_path)?
+            }
+        };
+
+        let pipeline_config: PipelineTransformConfig = match &main_config.pipeline_config_path {
+            None => PipelineTransformConfig::new(),
+            Some(path) => {
+                let pipeline_config_path = main_config_path
+                    .parent()
+                    .context("cannot get parent of pipeline_config_path")?
+                    .join(path);
+                PipelineTransformConfig::from_file(pipeline_config_path)?
+            }
+        };
+
+        let log_directory: PathBuf = main_config_path
+            .canonicalize()?.join(&main_config.log_directory);
+        let log_output_subdirectory: PathBuf = log_directory
+            .canonicalize()?.join(&main_config.log_output_subdirectory);
+        let pipeline_output_directory: PathBuf = log_directory
+            .canonicalize()?.join(&main_config.pipeline_output_directory);
+
+        Ok(Self {
+            main_config,
+            recorder_config,
+            pipeline_config,
+            log_directory,
+            log_output_subdirectory,
+            pipeline_output_directory,
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum PipelineOutputFormat {
+    Parquet,
+    Csv,
+}
+
+impl PipelineOutputFormat {
+    pub fn get_file_extension(&self) -> &str {
+        match self {
+            PipelineOutputFormat::Parquet => ".parquet",
+            PipelineOutputFormat::Csv => ".csv",
+        }
+    }
 }

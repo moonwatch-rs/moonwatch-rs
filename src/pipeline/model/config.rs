@@ -1,17 +1,33 @@
+use std::fs::File;
+use std::path::Path;
 use chrono::TimeDelta;
 use regex::Regex;
+use anyhow::Result;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSeconds};
 use crate::core::common::{serialize_regex, deserialize_regex};
 use crate::pipeline::model::event::ActiveEventStringAttribute;
 
-/// This configuration defines ETL pipeline to prepare all logged events
+pub(crate) fn default_pipeline_config() -> String {
+    "./pipeline_config.json".to_string()
+}
+
+pub(crate) fn default_pipeline_config_schema() -> String {
+    "./schemas/pipeline_config.schema.json".to_string()
+}
+
+/// This configuration defines the "transform" part of ETL pipeline.
+/// It specifies how logged events are processed before being written out
 /// for further analysis.
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct PipelineConfig {
+pub struct PipelineTransformConfig {
+    #[serde(rename = "$schema", default = "default_pipeline_config_schema")]
+    #[schemars(skip)]
+    pub schema: String,
+
     /// # Rules for ActiveEvent
     /// This defines a sequence of rules that are applied in order
     /// to every logged `ActiveEvent` (desktop `ActiveWindowEvent` + mobile `ActiveActivityEvent`).
@@ -28,12 +44,19 @@ pub struct PipelineConfig {
     pub active_event_max_duration: TimeDelta,
 }
 
-impl PipelineConfig {
-    pub fn new() -> PipelineConfig {
-        PipelineConfig {
+impl PipelineTransformConfig {
+    pub fn new() -> PipelineTransformConfig {
+        PipelineTransformConfig {
+            schema: default_pipeline_config_schema(),
             active_event_rules: vec![],
             active_event_max_duration: TimeDelta::minutes(1),
         }
+    }
+
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
+        let file = File::open(path)?;
+        let config: Self = serde_json::from_reader(file)?;
+        Ok(config)
     }
 }
 

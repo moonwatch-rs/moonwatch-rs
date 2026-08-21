@@ -21,14 +21,14 @@ fn parser(fixtures: &[&str]) -> MoonwatchLogParser {
 
 /// Return the active events of given log fixtures, ie. the input of the ETL pipeline.
 fn active_events(fixtures: &[&str]) -> DataFrame {
-    let lf = parser(fixtures).get_input_lazy_df().unwrap();
-    MoonwatchLogParser::extract_active_event_df(lf).collect().unwrap()
+    let lf = parser(fixtures).get_input_lf().unwrap();
+    MoonwatchLogParser::get_active_event_lf(lf).collect().unwrap()
 }
 
 /// Return the device unlock events of given log fixtures.
 fn unlock_events(fixtures: &[&str]) -> DataFrame {
-    let lf = parser(fixtures).get_input_lazy_df().unwrap();
-    MoonwatchLogParser::extract_unlock_event_df(lf).collect().unwrap()
+    let lf = parser(fixtures).get_input_lf().unwrap();
+    MoonwatchLogParser::get_unlock_event_lf(lf).collect().unwrap()
 }
 
 fn strings(df: &DataFrame, name: &str) -> Vec<Option<String>> {
@@ -326,9 +326,9 @@ fn test_gzipped_log() {
     encoder.finish().unwrap();
 
     let lf = MoonwatchLogParser::new(vec![gz_path])
-        .get_input_lazy_df()
+        .get_input_lf()
         .unwrap();
-    let from_gz = MoonwatchLogParser::extract_active_event_df(lf)
+    let from_gz = MoonwatchLogParser::get_active_event_lf(lf)
         .collect()
         .unwrap();
     let from_plain = active_events(&["logs/desktop_v1.jsonl"]);
@@ -339,16 +339,16 @@ fn test_gzipped_log() {
 /// Reading a file that is not a Moonwatch log must fail rather than yield garbage.
 #[test]
 fn test_file_that_is_not_a_log() {
-    let lf = parser(&["simple/MainConfig.json"]).get_input_lazy_df().unwrap();
-    assert!(MoonwatchLogParser::extract_active_event_df(lf).collect().is_err());
+    let lf = parser(&["simple/MainConfig.json"]).get_input_lf().unwrap();
+    assert!(MoonwatchLogParser::get_active_event_lf(lf).collect().is_err());
 }
 
 #[test]
 fn test_missing_log() {
     let lf = parser(&["logs/does_not_exist.jsonl"])
-        .get_input_lazy_df()
+        .get_input_lf()
         .unwrap();
-    assert!(MoonwatchLogParser::extract_active_event_df(lf).collect().is_err());
+    assert!(MoonwatchLogParser::get_active_event_lf(lf).collect().is_err());
 }
 
 #[test]
@@ -434,7 +434,7 @@ fn test_active_event_df_unifies_desktop_and_mobile() {
 #[test]
 fn test_active_event_df_in_pipeline() {
     let lf = parser(&["logs/desktop_v1.jsonl", "logs/mobile.jsonl"])
-        .get_input_lazy_df()
+        .get_input_lf()
         .unwrap();
 
     let rules = vec![
@@ -456,7 +456,7 @@ fn test_active_event_df_in_pipeline() {
     ];
 
     let out = evaluate_active_window_rules(
-        MoonwatchLogParser::extract_active_event_df(lf),
+        MoonwatchLogParser::get_active_event_lf(lf),
         &rules,
     )
     .collect()

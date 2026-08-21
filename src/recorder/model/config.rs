@@ -1,8 +1,20 @@
+use std::fs::File;
+use std::path::Path;
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use anyhow::Result;
 use crate::sampler::model::event::RuntimeActiveWindowEventStringAttribute;
 use crate::core::common::{serialize_regex, deserialize_regex};
+
+
+pub(crate) fn default_recorder_config() -> String {
+    "./recorder_config.json".to_string()
+}
+
+pub(crate) fn default_recorder_config_schema() -> String {
+    "./schemas/recorder_config.schema.json".to_string()
+}
 
 /// This configuration defines rules for processing sampled events
 /// before they are written to log. At this time, window title is
@@ -19,6 +31,10 @@ use crate::core::common::{serialize_regex, deserialize_regex};
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RecorderConfig {
+    #[serde(rename = "$schema", default = "default_recorder_config_schema")]
+    #[schemars(skip)]
+    pub schema: String,
+
     /// # Rules for ActiveWindowEvent
     /// This defines a sequence of rules that are applied in order
     /// to every captured ActiveWindowEvent (ie. a recorded active
@@ -29,8 +45,15 @@ pub struct RecorderConfig {
 impl RecorderConfig {
     pub fn new() -> RecorderConfig {
         RecorderConfig {
+            schema: default_recorder_config_schema(),
             active_window_event_rules: vec![],
         }
+    }
+
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
+        let file = File::open(path)?;
+        let config: Self = serde_json::from_reader(file)?;
+        Ok(config)
     }
 }
 

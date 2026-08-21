@@ -3,3 +3,4 @@
 pub mod model;
 pub mod parser;
 pub mod transform;
+pub mod pipeline;

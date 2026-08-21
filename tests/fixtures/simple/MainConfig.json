@@ -4,5 +4,7 @@
   "sampleEverySec": 10,
   "writeEverySec": 100,
   "recorderConfigPath": "./RecorderConfig.json",
-  "pipelineConfigPath": null
+  "pipelineConfigPath": null,
+  "pipelineOutputDirectory": ".",
+  "pipelineOutputFormat": "parquet"
 }

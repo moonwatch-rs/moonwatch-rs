@@ -1,12 +1,12 @@
 use std::iter::zip;
 use moonwatch_rs::sampler::model::event::RuntimeEvent;
 use serde_json::Deserializer;
-use moonwatch_rs::core::config::read_config;
 use moonwatch_rs::core::model::event::Event;
 use moonwatch_rs::recorder::model::config::RecorderConfig;
 use moonwatch_rs::recorder::transform::transform_runtime_event;
 use crate::common::path_to_fixture;
 use tempfile::tempdir;
+use moonwatch_rs::core::model::config::Config;
 use moonwatch_rs::recorder::recorder::EventRecorder;
 
 mod common;
@@ -53,7 +53,7 @@ fn test_transform_runtime_event() {
 fn test_event_recorder() {
     let input_events = read_runtime_events("simple/RuntimeEvent_input.jsonl");
     let output_events_reference = read_events("simple/Event_output.jsonl");
-    let mut config = read_config(path_to_fixture("simple/MainConfig.json").as_path()).unwrap();
+    let mut config = Config::from_file(path_to_fixture("simple/MainConfig.json").as_path()).unwrap();
     let tmp_dir = tempdir().unwrap();
 
     config.log_directory = tmp_dir.path().into();
