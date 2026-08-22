@@ -44,11 +44,15 @@ if not os.path.exists(install_dir):
     os.makedirs(install_dir)
 
 shutil.copy(op.join(build_dir, "moonwatcher"), install_dir)
-if op.exists(op.join(install_dir, "config.json")):
-    print("config.json already exists, not copying default")
-else:
-    print("copying default config.json")
-    shutil.copy(op.join(build_dir, "config.json"), install_dir)
+
+# Existing configuration is never overwritten, so that an upgrade does not throw away the
+# user's rules; the defaults are only there to give a fresh install something to run with.
+for config in ("main_config.json", "recorder_config.json", "pipeline_config.json"):
+    if op.exists(op.join(install_dir, config)):
+        print(config, "already exists, not copying default")
+    else:
+        print("copying default", config)
+        shutil.copy(op.join(build_dir, config), install_dir)
 
 print("Setting up Systemd user service")
 systemd_user_dir = op.expanduser("~/.config/systemd/user")

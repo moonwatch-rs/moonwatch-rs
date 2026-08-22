@@ -29,7 +29,9 @@ build_dir = op.join(root_dir, f"target/{TARGET_TRIPLE}/release")
 share_dir = op.join(root_dir, "share")
 
 shutil.copy(op.join(build_dir, "moonwatcher"), output_dir)
-shutil.copy(op.join(share_dir, "default-config-unix.json"), op.join(output_dir, "config.json"))
+shutil.copy(op.join(share_dir, "default-main-config-unix.json"), op.join(output_dir, "main_config.json"))
+shutil.copy(op.join(share_dir, "default-recorder-config.json"), op.join(output_dir, "recorder_config.json"))
+shutil.copy(op.join(share_dir, "default-pipeline-config.json"), op.join(output_dir, "pipeline_config.json"))
 shutil.copy(op.join(share_dir, "install_unix.py"), output_dir)
 shutil.copy(op.join(share_dir, "moonwatch-rs.service"), output_dir)
 

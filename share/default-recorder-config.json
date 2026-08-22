@@ -1,0 +1,4 @@
+{
+  "$schema": "./schemas/recorder_config.schema.json",
+  "activeWindowEventRules": []
+}

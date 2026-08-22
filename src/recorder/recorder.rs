@@ -1,3 +1,4 @@
+use std::fs;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
@@ -43,14 +44,25 @@ impl EventRecorder<'_> {
 
     /// Dump the `Event` queue into a new .jsonl file, clear the buffer and return output path.
     /// If the queue is empty, no file will be created and the function will return None.
+    ///
+    /// The buffer is only cleared once the data is safely on disk - a failed dump keeps the
+    /// events, so the next attempt can still write them.
     pub fn dump(&mut self) -> Result<Option<PathBuf>> {
         if self.events.is_empty() {
             return Ok(None)
         }
 
-        let filename = format!("{}.jsonl", uuidv7::create());
-        let output_path = self.config.log_output_subdirectory.join(filename.as_str());
+        let output_dir = &self.config.log_output_subdirectory;
+        if !output_dir.exists() {
+            log::info!("Creating output directory {}", output_dir.display());
+            fs::create_dir_all(output_dir)
+                .with_context(|| format!("Failed to create {}", output_dir.display()))?;
+        }
 
+        let filename = format!("{}.jsonl", uuidv7::create());
+        let output_path = output_dir.join(filename.as_str());
+
+        log::info!("Writing {} events to {}", self.events.len(), output_path.display());
         let file = File::create(&output_path).context("Failed to create output file")?;
         let mut writer = BufWriter::new(file);
 
@@ -59,6 +71,13 @@ impl EventRecorder<'_> {
             e.serialize(&mut serializer).context("Failed to serialize event")?;
             writer.write_all(b"\n").context("Failed to write newline")?;
         }
+
+        // This write often happens while the machine is logging off or shutting down, so get
+        // the data all the way to the filesystem rather than leaving it in a buffer that a
+        // Drop we never reach would have to flush. `into_inner` also surfaces a flush error,
+        // which dropping the BufWriter would silently discard.
+        let file = writer.into_inner().context("Failed to flush output file")?;
+        file.sync_all().context("Failed to sync output file")?;
 
         self.events.clear();
         Ok(Some(output_path))

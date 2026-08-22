@@ -1,0 +1,5 @@
+{
+  "$schema": "./schemas/pipeline_config.schema.json",
+  "activeEventRules": [],
+  "activeEventMaxDuration": 600
+}

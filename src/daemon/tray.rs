@@ -1,6 +1,6 @@
 //! System tray icon and its context menu.
 //!
-//! The tray runs on the UI thread (see [`crate::watcher::run_event_loop`]) and never
+//! The tray runs on the UI thread (see [`crate::daemon::run_event_loop`]) and never
 //! touches the event buffer itself: every menu action is turned into a
 //! [`MoonwatcherSignal`] for the worker thread, or into a wait on the worker via
 //! [`WorkerHandle`].
@@ -16,10 +16,10 @@ use anyhow::{bail, Context, Result};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
-use crate::watcher;
-use crate::watcher::UiRefresh;
-use crate::watcher::core::{MoonwatcherSignal, WorkerHandle};
-use crate::watcher::status::{RecordingState, SharedStatus, StatusIcon};
+use crate::daemon;
+use crate::daemon::UiRefresh;
+use crate::daemon::status::{RecordingState, SharedStatus, StatusIcon};
+use crate::daemon::worker::{MoonwatcherSignal, WorkerHandle};
 
 const RECORDING_ICON_PNG: &[u8] = include_bytes!("../../share/moonwatch-icon.png");
 const PAUSED_ICON_PNG: &[u8] = include_bytes!("../../share/moonwatch-icon-paused.png");
@@ -44,7 +44,7 @@ pub struct TrayContext {
     pub worker: WorkerHandle,
     pub status: SharedStatus,
     pub output_dir: SharedOutputDir,
-    /// Directory holding config.json and moonwatcher.log. Fixed for the process lifetime.
+    /// Directory holding main_config.json and moonwatcher.log. Fixed for the process lifetime.
     pub config_dir: PathBuf,
 }
 
@@ -120,7 +120,7 @@ pub fn build_tray(context: TrayContext) -> Result<TrayHandle> {
             ID_QUIT => {
                 log::info!("Tray: quit");
                 worker.terminate_and_wait(WORKER_TIMEOUT);
-                watcher::quit_event_loop();
+                daemon::quit_event_loop();
             }
             other => log::warn!("Unexpected tray menu event: {other:?}"),
         }
@@ -212,7 +212,7 @@ fn open_folder(what: &str, path: &Path) {
 
     if let Err(e) = std::fs::create_dir_all(path) {
         log::warn!("Could not create {path:?}: {e:?}");
-    } else if let Err(e) = watcher::open_path(path) {
+    } else if let Err(e) = daemon::open_path(path) {
         log::warn!("Could not open {path:?}: {e:?}");
     }
 }

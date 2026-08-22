@@ -9,11 +9,13 @@ mkdir "%MOONWATCHDIR%"
 
 copy moonwatcher.exe "%MOONWATCHDIR%"
 
-@if exist "%MOONWATCHDIR%\config.json" (
-    @echo config.json already exists, not copying default
-) else (
-    @echo copying default config.json
-    copy config.json "%MOONWATCHDIR%"
+@for %%C in (main_config.json recorder_config.json pipeline_config.json) do @(
+    if exist "%MOONWATCHDIR%\%%C" (
+        echo %%C already exists, not copying default
+    ) else (
+        echo copying default %%C
+        copy %%C "%MOONWATCHDIR%"
+    )
 )
 
 @echo Installing to Startup menu
@@ -21,7 +23,7 @@ copy moonwatcher.exe "%MOONWATCHDIR%"
 @set SHORTCUT='%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\moonwatcher.lnk'
 @set WORKINGDIRECTORY='%MOONWATCHDIR%'
 @set TARGET='%MOONWATCHDIR%\moonwatcher.exe'
-@set ARGUMENTS='config.json'
+@set ARGUMENTS='watch'
 @set DESCRIPTION='Moonwatch.rs daemon'
 @set PWS=powershell.exe -ExecutionPolicy Bypass -NoLogo -NonInteractive -NoProfile
 

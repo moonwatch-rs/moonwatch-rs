@@ -1,3 +1,5 @@
+//! Platform implementations of [`crate::sampler::desktop::Desktop`].
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 

@@ -1,13 +1,14 @@
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::{absolute, Path, PathBuf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use anyhow::{Context, Result};
+use crate::core::common::config_dir;
 use crate::pipeline::model::config::PipelineTransformConfig;
 use crate::recorder::model::config::RecorderConfig;
 
 
-pub(crate) fn default_main_config() -> String {
+pub fn default_main_config() -> String {
     "./main_config.json".to_string()
 }
 
@@ -115,34 +116,36 @@ impl Config {
         let main_config_path = main_config_path.as_ref();
         let main_config = MainConfig::from_file(main_config_path)?;
 
+        // Every relative path in `MainConfig` is relative to the directory holding it.
+        let config_dir = config_dir(main_config_path);
+
         let recorder_config: RecorderConfig = match &main_config.recorder_config_path {
             None => RecorderConfig::new(),
             Some(path) => {
-                let recorder_config_path = main_config_path
-                    .parent()
-                    .context("cannot get parent of recorder_config_path")?
-                    .join(path);
-                RecorderConfig::from_file(recorder_config_path)?
+                let recorder_config_path = config_dir.join(path);
+                RecorderConfig::from_file(&recorder_config_path)
+                    .with_context(|| format!("could not read recorder config {}",
+                                             recorder_config_path.display()))?
             }
         };
 
         let pipeline_config: PipelineTransformConfig = match &main_config.pipeline_config_path {
             None => PipelineTransformConfig::new(),
             Some(path) => {
-                let pipeline_config_path = main_config_path
-                    .parent()
-                    .context("cannot get parent of pipeline_config_path")?
-                    .join(path);
-                PipelineTransformConfig::from_file(pipeline_config_path)?
+                let pipeline_config_path = config_dir.join(path);
+                PipelineTransformConfig::from_file(&pipeline_config_path)
+                    .with_context(|| format!("could not read pipeline config {}",
+                                             pipeline_config_path.display()))?
             }
         };
 
-        let log_directory: PathBuf = main_config_path
-            .canonicalize()?.join(&main_config.log_directory);
-        let log_output_subdirectory: PathBuf = log_directory
-            .canonicalize()?.join(&main_config.log_output_subdirectory);
-        let pipeline_output_directory: PathBuf = log_directory
-            .canonicalize()?.join(&main_config.pipeline_output_directory);
+        // `absolute` rather than `canonicalize`: these directories are created on demand,
+        // so they need not exist yet at the time the configuration is read.
+        let log_directory: PathBuf = absolute(config_dir.join(&main_config.log_directory))?;
+        let log_output_subdirectory: PathBuf =
+            absolute(log_directory.join(&main_config.log_output_subdirectory))?;
+        let pipeline_output_directory: PathBuf =
+            absolute(config_dir.join(&main_config.pipeline_output_directory))?;
 
         Ok(Self {
             main_config,

@@ -1,0 +1,11 @@
+{
+  "$schema": "./schemas/main_config.schema.json",
+  "logDirectory": "./logs",
+  "logOutputSubdirectory": ".",
+  "sampleEverySec": 15,
+  "writeEverySec": 1200,
+  "recorderConfigPath": "./recorder_config.json",
+  "pipelineConfigPath": "./pipeline_config.json",
+  "pipelineOutputDirectory": "./output",
+  "pipelineOutputFormat": "parquet"
+}

@@ -1,5 +1,6 @@
-use std::path::Path;
-use chrono::{DateTime, Utc};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use chrono::{DateTime, TimeDelta, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use crate::core::model::event::Event;
@@ -32,6 +33,34 @@ pub enum RuntimeActiveWindowEventStringAttribute {
 }
 
 impl RuntimeActiveWindowEvent {
+    /// Build an event for a window that was found to be active right now.
+    ///
+    /// `duration` is how long the window is assumed to have been active - Moonwatch samples
+    /// at regular intervals and credits the whole interval to whatever it caught.
+    ///
+    /// `process_path` is `None` when it could not be determined: the process may be
+    /// elevated, owned by another user, or already gone. The event is still worth recording,
+    /// so this is not a reason to drop the sample. Tagging and redaction are not applied
+    /// here - that is the recorder's job, see `RecorderConfig`.
+    pub fn new(idle_for: Duration,
+               window_title: String,
+               process_path: Option<PathBuf>,
+               duration: Duration) -> Self {
+        RuntimeActiveWindowEvent {
+            time: Utc::now(),
+            data: ActiveWindowEventV1Data {
+                duration: whole_seconds(duration),
+                hostname: whoami::hostname().unwrap_or_default(),
+                username: whoami::username().unwrap_or_default(),
+                idle_for: whole_seconds(idle_for),
+                process_path: process_path
+                    .map(|path| path.to_string_lossy().into_owned()),
+                tags: vec![],
+            },
+            window_title,
+        }
+    }
+
     pub fn extract_string_attribute(self: &Self, attribute: &RuntimeActiveWindowEventStringAttribute) -> Option<String> {
         match attribute {
             RuntimeActiveWindowEventStringAttribute::WindowTitle => Some(self.window_title.clone()),
@@ -66,4 +95,10 @@ impl Into<RuntimeEvent> for RuntimeActiveWindowEvent {
     fn into(self) -> RuntimeEvent {
         RuntimeEvent::ActiveWindowEvent(self)
     }
+}
+
+/// Durations are logged as whole seconds, so round on the way in rather than letting
+/// serialization decide.
+fn whole_seconds(duration: Duration) -> TimeDelta {
+    TimeDelta::seconds(duration.as_secs_f64().round() as i64)
 }
