@@ -2,7 +2,8 @@
 name = "moonwatch-rs"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+# 1.87 is where `std::env::home_dir()` was un-deprecated, see `core::common::home_dir()`.
+rust-version = "1.87"
 authors = ["Tomas Karabela <tkarabela@seznam.cz>"]
 readme = "README.md"
 repository = "https://github.com/tkarabela/moonwatch-rs"
@@ -56,4 +57,6 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Th
                                             # RegisterClassW()/WNDCLASSW are gated behind this.
                                             "Win32_Graphics_Gdi",
                                             # For AttachConsole(), see attach_parent_console().
-                                            "Win32_System_Console"] }
+                                            "Win32_System_Console",
+                                            # For the autostart entry written by `moonwatch_rs install`.
+                                            "Win32_System_Registry"] }

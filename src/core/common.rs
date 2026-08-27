@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use anyhow::{bail, Result};
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serializer};
 
@@ -27,4 +28,23 @@ pub fn config_dir(config_path: &Path) -> PathBuf {
     config_path.parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
+}
+
+/// The user's home directory.
+pub fn home_dir() -> Result<PathBuf> {
+    // Un-deprecated in Rust 1.87 together with a fix for the Windows behaviour that got it
+    // deprecated in the first place, so this is again the right way to ask.
+    match std::env::home_dir() {
+        Some(home) if !home.as_os_str().is_empty() => Ok(home),
+        _ => bail!("could not determine your home directory"),
+    }
+}
+
+/// The directory Moonwatch.rs installs itself into, `~/.moonwatch-rs`.
+///
+/// This is what `moonwatch_rs install` writes to and what the autostart entry it creates
+/// points at; nothing else in the program depends on it, as an installation is located by
+/// the path of the executable instead (see `default_config_path`).
+pub fn moonwatch_dir_in_home() -> Result<PathBuf> {
+    Ok(home_dir()?.join(".moonwatch-rs"))
 }

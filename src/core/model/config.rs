@@ -8,8 +8,11 @@ use crate::pipeline::model::config::PipelineTransformConfig;
 use crate::recorder::model::config::RecorderConfig;
 
 
+/// Name of the main configuration file inside a Moonwatch.rs directory.
+pub const MAIN_CONFIG_FILE_NAME: &str = "main_config.json";
+
 pub fn default_main_config() -> String {
-    "./main_config.json".to_string()
+    format!("./{MAIN_CONFIG_FILE_NAME}")
 }
 
 pub(crate) fn default_main_config_schema() -> String {

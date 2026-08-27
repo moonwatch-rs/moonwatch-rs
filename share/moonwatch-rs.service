@@ -1,9 +1,0 @@
-[Unit]
-Description=Moonwatch.rs daemon
-
-[Service]
-ExecStart=%h/.moonwatch-rs/moonwatcher --config %h/.moonwatch-rs/main_config.json watch
-ExecReload=kill -HUP $MAINPID
-
-[Install]
-WantedBy=graphical-session.target

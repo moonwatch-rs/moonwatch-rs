@@ -12,7 +12,7 @@ use std::time::Duration;
 const MAX_TOOLTIP_CHARS: usize = 127;
 
 /// How much of a problem description to show in the menu. The full message always goes to
-/// `moonwatcher.log`.
+/// `moonwatch_rs.log`.
 const MAX_PROBLEM_CHARS: usize = 90;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

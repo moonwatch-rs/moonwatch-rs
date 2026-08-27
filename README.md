@@ -11,11 +11,11 @@ You can run Moonwatch.rs completely self-hosted on your desktop or laptop;
 aggregating data from multiple machines is also possible via a network drive or
 any of the "Shared Folder" cloud services (eg. Dropbox, OneDrive, MEGA, etc.).
 
-_Currently, Moonwatch.rs consists only of the `moonwatcher` daemon, which is a 
+_Currently, Moonwatch.rs consists only of the `moonwatch_rs` daemon, which is a 
 background service recording active window at regular intervals and logging it
 into `.jsonl` files. More features including analytics and GUI are planned._
 
-## The `moonwatcher` daemon
+## The `moonwatch_rs` daemon
 
 ### Supported platforms
 
@@ -29,7 +29,7 @@ into `.jsonl` files. More features including analytics and GUI are planned._
 
 ### Tray icon
 
-While running, `moonwatcher` shows a moon icon in the system tray. The icon tells you
+While running, `moonwatch_rs` shows a moon icon in the system tray. The icon tells you
 whether it is actually recording:
 
 | icon | meaning |
@@ -92,7 +92,7 @@ Recorded events are buffered in memory and only written out every `write_every_s
 stopping the daemon abruptly loses whatever has not been written yet.
 
 - On Linux, `SIGTERM` (ie. `systemctl --user stop`) triggers a final write.
-- On Windows, `moonwatcher` now owns a hidden window and answers `WM_QUERYENDSESSION` /
+- On Windows, `moonwatch_rs` now owns a hidden window and answers `WM_QUERYENDSESSION` /
   `WM_ENDSESSION`, so logging off, restarting and shutting down all flush the buffer
   first. Previously the process had neither a console nor a window and got no notice at
   all, which meant those events were lost.
@@ -103,7 +103,7 @@ use **Write events now** or lower `write_every_sec` if that matters to you.
 
 ### Diagnostics
 
-`moonwatcher` writes a log file next to `config.json`, `moonwatcher_rCURRENT.log`
+`moonwatch_rs` writes a log file next to `config.json`, `moonwatch_rs_rCURRENT.log`
 (rotated at 2 MB, three files kept). Set `MOONWATCH_LOG=debug` for per-sample detail.
 On Linux the log also goes to the systemd journal (`journalctl --user -u moonwatch-rs`).
 
@@ -111,17 +111,41 @@ Every change of state is logged as a `Tray status:` line, so what the icon was s
 any point can be reconstructed afterwards. Configuration errors appear there in full, rather
 than clipped to fit a menu item.
 
-### Installation on Linux
+### Installation
+
+Moonwatch.rs is distributed as a single binary that installs itself:
+
+```sh
+moonwatch_rs install
+```
+
+That copies the binary into `~/.moonwatch-rs`, writes the default configuration there
+(`main_config.json`, `recorder_config.json`, `pipeline_config.json` and the JSON schemas
+they refer to), registers itself to start when you log in, and starts it straight away.
+`--dir` installs somewhere other than `~/.moonwatch-rs`.
+
+Running `install` again is how you **upgrade**: the running daemon is asked to write out its
+buffered events and exit, the binary is replaced, and the daemon is started again.
+Configuration files you have edited are never overwritten – only the schemas in
+`~/.moonwatch-rs/schemas` are refreshed, so that your editor points out anything an older
+configuration needs. Progress is printed to the terminal and also ends up in
+`~/.moonwatch-rs/moonwatch_rs.log`.
+
+Once installed:
+
+- events are written to `~/.moonwatch-rs/logs`
+- to customize, edit `~/.moonwatch-rs/main_config.json` – reachable via **Open Moonwatch.rs
+  folder** in the tray menu
+
+#### Linux
 
 Tested on Ubuntu 24.04 LTS.
 
 - `sudo apt install gnome-screensaver xprintidle xdotool libgtk-3-0 libayatana-appindicator3-1`
-- Clone the repository.
-- `./build_linux.py && ./build/moonwatch-rs_0.1.0_Linux-x86-64/install_unix.py`
-- This will install into `~/.moonwatcher-rs`.
-  - It sets up a Systemd user service `moonwatcher-rs` that starts `moonwatcher` on startup.
-  - Events are written to `~/.moonwatcher-rs/logs`
-  - To customize, edit `~/.moonwatcher-rs/config.json`
+  (`install` warns if the first three are missing, but installs anyway)
+- Build with `./build_linux.py`, or `cargo build --release`; then run `moonwatch_rs install`
+  from the resulting package.
+- Autostart is a Systemd user service, `~/.config/systemd/user/moonwatch-rs.service`.
   - To check up on the daemon, run `systemctl --user status moonwatch-rs`
   - To reload config, run `systemctl --user reload moonwatch-rs`
   - To stop it, run `systemctl --user stop moonwatch-rs` (this flushes buffered events)
@@ -129,25 +153,28 @@ Tested on Ubuntu 24.04 LTS.
 To build from source you additionally need `libgtk-3-dev` and
 `libayatana-appindicator3-dev`.
 
-### Installation on Windows
+#### Windows
 
-- Build with `build_windows.py` (cross-compiles from Linux) or `cargo build --release`.
-- Run `install_windows.bat` from the resulting package.
-- This will install into `%USERPROFILE%\.moonwatch-rs`.
-  - It adds a shortcut to the Startup folder so `moonwatcher` starts at login.
-  - Events are written to `%USERPROFILE%\.moonwatch-rs\log`
-  - To customize, edit `%USERPROFILE%\.moonwatch-rs\config.json` (reachable via **Open
-    Moonwatch.rs folder** in the tray menu), then use **Reload configuration**
+- Build with `build_windows.py` (cross-compiles from Linux) or `cargo build --release`; then
+  run `moonwatch_rs.exe install`.
+- Autostart is a `Moonwatch.rs` value under
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Installing also removes the Startup
+  folder shortcut that older versions used, so that you are not started twice.
   - To stop it, use **Quit Moonwatch.rs** in the tray menu
   - Buffered events are written out automatically when you log off, restart or shut down
 
 ### CLI
 
 ```sh
-moonwatcher config.json
+moonwatch_rs install     # install into ~/.moonwatch-rs and start at login
+moonwatch_rs watch       # run the daemon (this is what autostart runs)
+moonwatch_rs pipeline    # run the ETL pipeline over the recorded logs
 ```
 
-- `--no-tray` – do not create a tray icon
+- `--config <MAIN_CONFIG.JSON>` – configuration to use; defaults to `main_config.json` next
+  to the executable. Has no effect on `install`, which takes `--dir` instead.
+- `watch --no-tray` – do not create a tray icon
+- `install --dir <DIR>` – install somewhere other than `~/.moonwatch-rs`
 
 ### JSON configuration
 

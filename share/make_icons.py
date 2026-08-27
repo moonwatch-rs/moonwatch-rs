@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate the tray icons used by moonwatcher.
+Generate the tray icons used by moonwatch_rs.
 
 The icons are embedded into the binary by src/watcher/tray.rs, so they are checked in;
 run this only when you want to change how they look.

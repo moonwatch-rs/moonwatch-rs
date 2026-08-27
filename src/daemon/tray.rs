@@ -44,7 +44,7 @@ pub struct TrayContext {
     pub worker: WorkerHandle,
     pub status: SharedStatus,
     pub output_dir: SharedOutputDir,
-    /// Directory holding main_config.json and moonwatcher.log. Fixed for the process lifetime.
+    /// Directory holding main_config.json and moonwatch_rs.log. Fixed for the process lifetime.
     pub config_dir: PathBuf,
 }
 

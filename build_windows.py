@@ -32,13 +32,10 @@ os.makedirs(output_dir)
 
 subprocess.check_call(["cross", "build", "--locked", "--release", "--target", f"{TARGET_TRIPLE}"])
 build_dir = op.join(root_dir, f"target/{TARGET_TRIPLE}/release")
-share_dir = op.join(root_dir, "share")
 
-shutil.copy(op.join(build_dir, "moonwatcher.exe"), output_dir)
-shutil.copy(op.join(share_dir, "default-main-config-windows.json"), op.join(output_dir, "main_config.json"))
-shutil.copy(op.join(share_dir, "default-recorder-config.json"), op.join(output_dir, "recorder_config.json"))
-shutil.copy(op.join(share_dir, "default-pipeline-config.json"), op.join(output_dir, "pipeline_config.json"))
-shutil.copy(op.join(share_dir, "install_windows.bat"), output_dir)
+# The archive holds nothing but the binary - `moonwatch_rs install` writes the default
+# configuration and registers the autostart entry by itself.
+shutil.copy(op.join(build_dir, "moonwatch_rs.exe"), output_dir)
 
 if op.exists(OUTPUT_ARCHIVE_PATH):
     os.remove(OUTPUT_ARCHIVE_PATH)

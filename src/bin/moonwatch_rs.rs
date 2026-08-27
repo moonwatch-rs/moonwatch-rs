@@ -1,5 +1,5 @@
 // No console on Windows, so that logging in at startup does not flash a terminal window.
-// Diagnostics go to moonwatcher.log instead, see init_logging(); output for the subcommands
+// Diagnostics go to moonwatch_rs.log instead, see init_logging(); output for the subcommands
 // that a user runs interactively is handled by attach_parent_console().
 #![windows_subsystem = "windows"]
 
@@ -10,16 +10,16 @@ use clap::{Parser, Subcommand};
 use flexi_logger::{Cleanup, Criterion, Duplicate, FileSpec, Logger, LoggerHandle, Naming, WriteMode};
 use log::info;
 
-use moonwatch_rs::core::common::config_dir;
-use moonwatch_rs::core::model::config::{default_main_config, Config};
-use moonwatch_rs::daemon;
+use moonwatch_rs::core::common::{config_dir, moonwatch_dir_in_home};
+use moonwatch_rs::core::model::config::{Config, MAIN_CONFIG_FILE_NAME};
+use moonwatch_rs::{daemon, installer};
 use moonwatch_rs::pipeline::pipeline::MoonwatchPipeline;
 
 /// Moonwatch.rs - a privacy-focused digital wellbeing app
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct MoonwatcherCli {
-    /// path to main_config.json (default: next to the moonwatcher executable)
+    /// path to main_config.json (default: next to the moonwatch_rs executable)
     #[arg(long, short = 'c', value_name = "MAIN_CONFIG.JSON", global = true)]
     config: Option<PathBuf>,
 
@@ -29,6 +29,18 @@ struct MoonwatcherCli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Install Moonwatch.rs into your home directory, start it, and keep starting it at login
+    ///
+    /// Run this on the downloaded binary; it copies itself into place. Running it again over
+    /// an existing installation upgrades it: the daemon is stopped, the executable replaced
+    /// and the daemon started again, while any configuration you have edited is left alone.
+    /// The global --config option has no effect here, use --dir instead.
+    Install {
+        /// directory to install into (default: ~/.moonwatch-rs)
+        #[arg(long, value_name = "DIR")]
+        dir: Option<PathBuf>,
+    },
+
     /// Run the Moonwatch.rs daemon: sample the active window and record events
     Watch {
         /// run without a system tray icon
@@ -45,13 +57,18 @@ fn main() -> Result<()> {
     attach_parent_console();
 
     let cli = MoonwatcherCli::parse();
+
+    if let Command::Install { dir } = cli.command {
+        return run_install(dir);
+    }
+
     let config_path = match cli.config {
         Some(path) => path,
         None => default_config_path()?,
     };
 
     // Held for the lifetime of the process; dropping it shuts the logger down.
-    let _logger = init_logging(&config_path)?;
+    let _logger = init_logging(&config_dir(&config_path))?;
 
     info!("--- Moonwatch ---");
     info!("Configuration file: {config_path:?}");
@@ -59,7 +76,35 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Watch { no_tray } => daemon::run(&config_path, no_tray),
         Command::Pipeline => run_pipeline(&config_path),
+        // Handled above, before the logger is set up.
+        Command::Install { .. } => unreachable!(),
     }
+}
+
+/// Install into `dir`, or into `~/.moonwatch-rs` when it was not given.
+///
+/// Logging is set up in the installation directory rather than next to the executable, which
+/// at this point is wherever the binary was downloaded to. The directory has to exist for
+/// that, so it is created here rather than by the installer.
+fn run_install(dir: Option<PathBuf>) -> Result<()> {
+    let moonwatch_dir = match dir {
+        // The autostart entry has to name the installation in a way that still means the
+        // same thing when the user logs in, so a relative `--dir` is resolved now, against
+        // the working directory it was written for. `absolute` rather than `canonicalize`,
+        // which would need the directory to exist already.
+        Some(dir) => std::path::absolute(&dir)
+            .with_context(|| format!("could not resolve {}", dir.display()))?,
+        None => moonwatch_dir_in_home()
+            .context("pass --dir to say where Moonwatch.rs should be installed")?,
+    };
+
+    std::fs::create_dir_all(&moonwatch_dir)
+        .with_context(|| format!("could not create {}", moonwatch_dir.display()))?;
+
+    let _logger = init_logging(&moonwatch_dir)?;
+
+    info!("--- Moonwatch ---");
+    installer::install(&moonwatch_dir)
 }
 
 /// Read the configuration and run the ETL pipeline once.
@@ -88,37 +133,31 @@ fn run_pipeline(config_path: &Path) -> Result<()> {
 /// Systemd user unit.
 fn default_config_path() -> Result<PathBuf> {
     let exe = std::env::current_exe()
-        .context("could not determine the path of the moonwatcher executable")?;
+        .context("could not determine the path of the moonwatch_rs executable")?;
     let exe_dir = exe.parent()
         .with_context(|| format!("{} has no parent directory", exe.display()))?;
 
-    // `default_main_config()` is the relative path config files refer to each other by
-    // ("./main_config.json"); only its file name is meaningful next to the executable.
-    let name = Path::new(&default_main_config()).file_name()
-        .context("the default configuration name has no file name")?
-        .to_owned();
-
-    Ok(exe_dir.join(name))
+    Ok(exe_dir.join(MAIN_CONFIG_FILE_NAME))
 }
 
-/// Set up logging to `moonwatcher.log` next to the configuration file.
+/// Set up logging to `moonwatch_rs.log` in `log_dir`, which is the directory holding the
+/// configuration file (or, for `install`, the directory being installed into).
 ///
 /// On Windows the daemon has no console of its own, so `println!` output would be lost
 /// entirely, which is exactly what makes shutdown problems hard to diagnose. Messages are
-/// additionally sent to stderr, where systemd picks them up into the journal on Linux.
+/// additionally sent to stderr, where systemd picks them up into the journal on Linux and
+/// where `install` run from a terminal reports its progress.
 ///
 /// Verbosity can be raised with eg. `MOONWATCH_LOG=debug`.
-fn init_logging(config_path: &Path) -> Result<LoggerHandle> {
-    let log_dir = config_dir(config_path);
-
+fn init_logging(log_dir: &Path) -> Result<LoggerHandle> {
     let spec = std::env::var("MOONWATCH_LOG").unwrap_or_else(|_| "info".to_string());
 
     let duplicate = if cfg!(debug_assertions) { Duplicate::All } else { Duplicate::Info };
 
     let logger = Logger::try_with_str(&spec)?
         .log_to_file(FileSpec::default()
-            .directory(&log_dir)
-            .basename("moonwatcher")
+            .directory(log_dir)
+            .basename("moonwatch_rs")
             .suffix("log")
             .suppress_timestamp())
         .rotate(Criterion::Size(2 * 1024 * 1024), Naming::Numbers, Cleanup::KeepLogFiles(3))
@@ -135,7 +174,7 @@ fn init_logging(config_path: &Path) -> Result<LoggerHandle> {
 /// Write to the console of whoever launched us, if there is one.
 ///
 /// The binary is built for the Windows subsystem so that starting at login does not flash a
-/// terminal window, which also means it gets no console of its own - and `moonwatcher
+/// terminal window, which also means it gets no console of its own - and `moonwatch_rs
 /// pipeline` or `--help` would print nowhere. Attaching to the parent's console fixes that
 /// for the interactive case and does nothing at login, where there is no parent console.
 ///
