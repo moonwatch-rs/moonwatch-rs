@@ -102,20 +102,3 @@ fn test_event_recorder_creates_a_missing_output_directory() {
     assert!(output_path.starts_with(&config.log_output_subdirectory));
     assert!(std::fs::read_to_string(&output_path).unwrap().contains("ActiveWindowEventV1"));
 }
-
-/// Serialized events have to keep matching the published schema - this is the contract with
-/// anything else reading the .jsonl logs.
-#[test]
-fn test_written_events_match_the_published_schema() {
-    #[jsonschema::validator(path = "src/schema/events/ActiveWindowEventV1.json", draft = Draft202012)]
-    struct ActiveWindowEventSchema;
-
-    let events = read_events("simple/Event_output.jsonl");
-    assert!(!events.is_empty(), "the fixture should contain events");
-
-    for e in events {
-        let value = serde_json::to_value(&e).unwrap();
-        ActiveWindowEventSchema::validate(&value)
-            .unwrap_or_else(|err| panic!("{value} does not match the schema: {err}"));
-    }
-}

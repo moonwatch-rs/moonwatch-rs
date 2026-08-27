@@ -1,3 +1,0 @@
-[submodule "src/schema"]
-	path = src/schema
-	url = https://github.com/moonwatch-rs/moonwatch-json-schema.git
