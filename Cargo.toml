@@ -8,7 +8,7 @@ authors = ["Tomas Karabela <tkarabela@seznam.cz>"]
 # Also what Windows shows as the file description of moonwatch_rs.exe, see build.rs.
 description = "A privacy-focused digital wellbeing app"
 readme = "README.md"
-repository = "https://github.com/tkarabela/moonwatch-rs"
+repository = "https://github.com/moonwatch-rs/moonwatch-rs"
 license = "MIT"
 publish = false
 
@@ -67,3 +67,6 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Th
                                             "Win32_System_Console",
                                             # For the autostart entry written by `moonwatch_rs install`.
                                             "Win32_System_Registry"] }
+
+[profile.release]
+strip = "debuginfo"

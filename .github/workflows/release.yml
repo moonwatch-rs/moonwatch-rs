@@ -1,0 +1,90 @@
+name: Release
+
+# Builds the Windows binary and attaches it to a draft GitHub release.
+#
+# Run it by hand from the Actions tab, picking the release tag as the ref ("Use workflow
+# from" -> the tag). The tag is the version, and it has to match the version declared in
+# Cargo.toml - the manifest stays the single declaration, this only checks it.
+#
+# Nothing is published to crates.io; the package is `publish = false`.
+#
+# The release is left as a draft, so the notes can be edited before it goes live. Running
+# this twice for one tag fails, because the release already exists; to replace the binary on
+# an existing release, use `gh release upload <tag> <file> --clobber` instead.
+
+on:
+  workflow_dispatch:
+
+env:
+  TAG: ${{ github.ref_name }}
+  CARGO_TERM_COLOR: always
+  # Without this the binary needs the VC++ redistributable installed, which rather defeats
+  # shipping one self-contained file. Scoped to the target rather than set as plain
+  # RUSTFLAGS, so build scripts and proc macros are still built for the host as usual.
+  CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+
+jobs:
+  release:
+    name: Build and draft the release
+    runs-on: windows-latest
+    permissions:
+      contents: write # to create the release
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # First, so that dispatching against a branch by mistake costs seconds rather than a
+      # whole build.
+      - name: Check that a tag was selected
+        if: github.ref_type != 'tag'
+        run: |
+          echo "::error::Run this workflow with a release tag selected as the ref, not '$TAG'"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      # No cargo cache on purpose: a release is worth building from scratch, and this
+      # workflow runs rarely enough that the time does not matter.
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          # `cargo pkgid` prints either `<url>#<version>` or `<url>#<name>@<version>`,
+          # depending on whether the package name matches its directory; taking everything
+          # after the last '#' or '@' handles both without needing jq.
+          declared=$(cargo pkgid | sed -e 's/.*[#@]//')
+          echo "Cargo.toml declares: $declared"
+          if [ "$declared" != "$TAG" ]; then
+            echo "::error::Cargo.toml declares '$declared' but the tag is '$TAG'"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: cargo test --locked --verbose
+
+      - name: Build
+        # The target is named explicitly so that the CARGO_TARGET_..._RUSTFLAGS above
+        # certainly applies.
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc
+
+      - name: Name the binary after the version
+        run: |
+          cp "target/x86_64-pc-windows-msvc/release/moonwatch_rs.exe" \
+             "moonwatch_rs-$TAG-x86_64-windows.exe"
+          ls -l "moonwatch_rs-$TAG-x86_64-windows.exe"
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" \
+            --draft \
+            --generate-notes \
+            --title "Moonwatch.rs $TAG" \
+            "moonwatch_rs-$TAG-x86_64-windows.exe"

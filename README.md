@@ -1,6 +1,6 @@
 # Moonwatch.rs
 
-[![Moonwatch.rs build master branch](https://img.shields.io/github/actions/workflow/status/tkarabela/moonwatch-rs/ci.yml?branch=master)](https://github.com/tkarabela/moonwatch-rs/actions)
+[![Moonwatch.rs build master branch](https://img.shields.io/github/actions/workflow/status/moonwatch-rs/moonwatch-rs/ci.yml?branch=master)](https://github.com/moonwatch-rs/moonwatch-rs/actions)
 
 🚧 _This is an early development version of the software._ 🚧
 
@@ -113,7 +113,10 @@ than clipped to fit a menu item.
 
 ### Installation
 
-Moonwatch.rs is distributed as a single binary that installs itself:
+Moonwatch.rs is distributed as a single binary that installs itself. Download
+`moonwatch_rs-<version>-x86_64-windows.exe` from the
+[Releases page](https://github.com/moonwatch-rs/moonwatch-rs/releases) (or build it, see
+below), then run:
 
 ```sh
 moonwatch_rs install
