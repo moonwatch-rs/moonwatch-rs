@@ -1,6 +1,6 @@
 [package]
 name = "moonwatch-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 # 1.87 is where `std::env::home_dir()` was un-deprecated, see `core::common::home_dir()`.
 rust-version = "1.87"
