@@ -11,9 +11,8 @@ use flexi_logger::{Cleanup, Criterion, Duplicate, FileSpec, Logger, LoggerHandle
 use log::info;
 
 use moonwatch_rs::core::common::{config_dir, moonwatch_dir_in_home};
-use moonwatch_rs::core::model::config::{Config, MAIN_CONFIG_FILE_NAME};
-use moonwatch_rs::{daemon, installer};
-use moonwatch_rs::pipeline::pipeline::MoonwatchPipeline;
+use moonwatch_rs::core::model::config::MAIN_CONFIG_FILE_NAME;
+use moonwatch_rs::{daemon, installer, pipeline};
 
 /// Moonwatch.rs - a privacy-focused digital wellbeing app
 #[derive(Parser)]
@@ -75,7 +74,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Watch { no_tray } => daemon::run(&config_path, no_tray),
-        Command::Pipeline => run_pipeline(&config_path),
+        Command::Pipeline => pipeline::run_pipeline(&config_path),
         // Handled above, before the logger is set up.
         Command::Install { .. } => unreachable!(),
     }
@@ -105,25 +104,6 @@ fn run_install(dir: Option<PathBuf>) -> Result<()> {
 
     info!("--- Moonwatch ---");
     installer::install(&moonwatch_dir)
-}
-
-/// Read the configuration and run the ETL pipeline once.
-///
-/// Unlike `watch`, a configuration that cannot be read is fatal here: this is a one-shot
-/// command with no tray to report the problem in and nothing useful to do without it.
-fn run_pipeline(config_path: &Path) -> Result<()> {
-    let config = Config::from_file(config_path)
-        .with_context(|| format!("could not read {}", config_path.display()))?;
-
-    info!("Reading logs from {}", config.log_directory.display());
-    info!("Writing {:?} output to {}",
-          config.main_config.pipeline_output_format,
-          config.pipeline_output_directory.display());
-
-    MoonwatchPipeline::from_config(config).write().context("the pipeline failed")?;
-
-    info!("Pipeline finished");
-    Ok(())
 }
 
 /// Where the configuration lives when the user did not say.

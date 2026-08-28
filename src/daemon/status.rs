@@ -24,6 +24,22 @@ pub enum RecordingState {
     Stopped,
 }
 
+/// What the on-demand ETL pipeline is doing.
+///
+/// The pipeline is not part of recording: it is started by hand from the tray, runs on a
+/// thread of its own and only ever reads the logs the worker has already written. It
+/// therefore has its own bit of state rather than being folded into [`RecordingState`], and
+/// a failed run does not change the tray icon - recording is still fine.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum PipelineState {
+    /// Not running. Either it never has, or the last run succeeded.
+    #[default]
+    Idle,
+    Running,
+    /// Why the last run failed, phrased for the user. Cleared when the next run starts.
+    Failed(String),
+}
+
 /// Which of the three embedded tray icons to display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusIcon {
@@ -44,6 +60,8 @@ pub struct MoonwatcherStatus {
     pub sampling_problem: Option<String>,
     /// Sampling interval of the loaded configuration; `None` until one loads.
     pub sample_every: Option<Duration>,
+    /// What the on-demand ETL pipeline is doing; owned by the pipeline thread.
+    pub pipeline: PipelineState,
 }
 
 impl MoonwatcherStatus {
@@ -88,6 +106,21 @@ impl MoonwatcherStatus {
             },
             RecordingState::Paused => "Recording paused".to_string(),
             RecordingState::Stopped => "Not recording".to_string(),
+        }
+    }
+
+    /// Text for the tray menu item that runs the ETL pipeline.
+    ///
+    /// The item says what it will do, what it is doing, and - since a run the user started
+    /// and never heard about again would be worse than no action at all - why the last one
+    /// failed. The full error always goes to `moonwatch_rs.log`.
+    pub fn pipeline_menu_line(&self) -> String {
+        match &self.pipeline {
+            PipelineState::Idle => "Run data pipeline".to_string(),
+            PipelineState::Running => "Running data pipeline…".to_string(),
+            PipelineState::Failed(problem) =>
+                format!("Run data pipeline - last run failed: {}",
+                        shorten(problem, MAX_PROBLEM_CHARS)),
         }
     }
 
@@ -152,6 +185,7 @@ mod tests {
             config_problem: None,
             sampling_problem: None,
             sample_every: Some(Duration::from_secs(15)),
+            pipeline: PipelineState::Idle,
         }
     }
 
@@ -221,6 +255,7 @@ mod tests {
             config_problem: Some("no such file".to_string()),
             sampling_problem: None,
             sample_every: None,
+            pipeline: PipelineState::Idle,
         };
         assert_eq!(stopped.icon(), StatusIcon::Problem);
         assert_eq!(stopped.menu_line(), "Not recording - no such file");
@@ -229,6 +264,55 @@ mod tests {
         let default = MoonwatcherStatus::default();
         assert_eq!(default.icon(), StatusIcon::Problem);
         assert_eq!(default.menu_line(), "Not recording");
+    }
+
+    /// The pipeline item is the only place a hand-started run reports back to the user, so
+    /// it has to say all three things: what it does, that it is busy, and that it failed.
+    #[test]
+    fn the_pipeline_item_says_what_the_last_run_did() {
+        assert_eq!(recording().pipeline_menu_line(), "Run data pipeline");
+
+        let running = MoonwatcherStatus { pipeline: PipelineState::Running, ..recording() };
+        assert_eq!(running.pipeline_menu_line(), "Running data pipeline…");
+
+        let failed = MoonwatcherStatus {
+            pipeline: PipelineState::Failed("could not read main_config.json".to_string()),
+            ..recording()
+        };
+        assert_eq!(failed.pipeline_menu_line(),
+                   "Run data pipeline - last run failed: could not read main_config.json");
+    }
+
+    /// A pipeline run reads logs that have already been written; it neither records nor
+    /// stops recording, so it must not take over the icon or the status line.
+    #[test]
+    fn a_failed_pipeline_run_leaves_the_recording_status_alone() {
+        let failed = MoonwatcherStatus {
+            pipeline: PipelineState::Failed("the pipeline failed".to_string()),
+            ..recording()
+        };
+
+        assert_eq!(failed.icon(), StatusIcon::Recording);
+        assert_eq!(failed.menu_line(), "Recording every 15 s");
+    }
+
+    /// The failure comes from anyhow, so it is multi-line and unbounded just like the
+    /// configuration problems the status line already has to clip.
+    #[test]
+    fn a_long_pipeline_failure_is_flattened_and_clipped() {
+        let failed = MoonwatcherStatus {
+            pipeline: PipelineState::Failed(format!("the pipeline failed
+
+Caused by:
+    {}",
+                                                    "x".repeat(500))),
+            ..recording()
+        };
+
+        let line = failed.pipeline_menu_line();
+        assert!(!line.contains('\n'), "menu items cannot show newlines: {line:?}");
+        assert!(line.starts_with("Run data pipeline - last run failed: the pipeline failed"));
+        assert!(line.ends_with("…"), "clipped text should say so: {line:?}");
     }
 
     #[test]

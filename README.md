@@ -60,10 +60,19 @@ The rest of the menu offers:
 
 - **Reload configuration** – re-read `config.json` (same as `SIGHUP` on Linux)
 - **Write events now** – flush buffered events to a `.jsonl` file immediately
+- **Run data pipeline** – the same ETL run as `moonwatch_rs pipeline`, over the recorded
+  logs and into `pipeline_output_directory`
 - **Pause recording** – stop sampling without stopping the daemon
 - **Open log folder** – open the configured `output_dir` (disabled until one is known)
 - **Open Moonwatch.rs folder** – open the directory holding `config.json` and the log
 - **Quit Moonwatch.rs** – write buffered events and exit
+
+**Run data pipeline** buffers nothing and blocks nothing: events still in memory are written
+out first, the pipeline then runs on a thread of its own while recording carries on, and the
+menu item reports back — it reads *Running data pipeline…* and is disabled while a run is in
+progress, and *Run data pipeline - last run failed: …* if one did. The full error is in
+`moonwatch_rs.log`. Quitting does not wait for a run to finish; nothing is lost if it is
+interrupted, since the pipeline only reads the logs.
 
 So a `config.json` you have broken is a self-service fix: the icon turns red, the menu says
 what the syntax error was, **Open Moonwatch.rs folder** takes you to the file, and

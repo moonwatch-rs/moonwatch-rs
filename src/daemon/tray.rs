@@ -18,7 +18,7 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use crate::daemon;
 use crate::daemon::UiRefresh;
-use crate::daemon::status::{RecordingState, SharedStatus, StatusIcon};
+use crate::daemon::status::{PipelineState, RecordingState, SharedStatus, StatusIcon};
 use crate::daemon::worker::{MoonwatcherSignal, WorkerHandle};
 
 const RECORDING_ICON_PNG: &[u8] = include_bytes!("../../share/moonwatch-icon.png");
@@ -31,6 +31,7 @@ const WORKER_TIMEOUT: Duration = Duration::from_secs(5);
 const ID_STATUS: &str = "moonwatch.status";
 const ID_RELOAD: &str = "moonwatch.reload";
 const ID_WRITE_NOW: &str = "moonwatch.write_now";
+const ID_RUN_PIPELINE: &str = "moonwatch.run_pipeline";
 const ID_PAUSE: &str = "moonwatch.pause";
 const ID_OPEN_LOGS: &str = "moonwatch.open_logs";
 const ID_OPEN_CONFIG_DIR: &str = "moonwatch.open_config_dir";
@@ -54,12 +55,20 @@ pub struct TrayContext {
 pub struct TrayHandle {
     tray: TrayIcon,
     status_item: MenuItem,
+    pipeline_item: MenuItem,
     pause_item: CheckMenuItem,
     open_logs_item: MenuItem,
     status: SharedStatus,
     output_dir: SharedOutputDir,
     /// What is on screen, so a refresh that changes nothing does no work and does not log.
-    displayed: Option<(StatusIcon, String)>,
+    displayed: Option<Displayed>,
+}
+
+/// The parts of the menu whose text is derived from the status, as last drawn.
+struct Displayed {
+    icon: StatusIcon,
+    line: String,
+    pipeline_line: String,
 }
 
 /// Create the tray icon. Must be called on the thread running the platform event loop.
@@ -71,6 +80,8 @@ pub fn build_tray(context: TrayContext) -> Result<TrayHandle> {
     let status_item = MenuItem::with_id(ID_STATUS, "Starting…", false, None);
     let reload = MenuItem::with_id(ID_RELOAD, "Reload configuration", true, None);
     let write_now = MenuItem::with_id(ID_WRITE_NOW, "Write events now", true, None);
+    // Text and enabled state both follow the run, see `TrayHandle::refresh`.
+    let pipeline_item = MenuItem::with_id(ID_RUN_PIPELINE, "Run data pipeline", true, None);
     let pause_item = CheckMenuItem::with_id(ID_PAUSE, "Pause recording", true, false, None);
     let open_logs_item = MenuItem::with_id(ID_OPEN_LOGS, "Open log folder", true, None);
     let open_config_dir = MenuItem::with_id(ID_OPEN_CONFIG_DIR, "Open Moonwatch.rs folder", true, None);
@@ -82,6 +93,7 @@ pub fn build_tray(context: TrayContext) -> Result<TrayHandle> {
         &PredefinedMenuItem::separator(),
         &reload,
         &write_now,
+        &pipeline_item,
         &pause_item,
         &PredefinedMenuItem::separator(),
         &open_logs_item,
@@ -103,6 +115,13 @@ pub fn build_tray(context: TrayContext) -> Result<TrayHandle> {
             ID_WRITE_NOW => {
                 log::info!("Tray: write events now");
                 worker.flush_and_wait(WORKER_TIMEOUT);
+            }
+            ID_RUN_PIPELINE => {
+                // Sent rather than waited on: the run is the equivalent of `moonwatch_rs
+                // pipeline` and can take minutes, which is far too long to hold the UI
+                // thread for. Progress comes back through the menu item text instead.
+                log::info!("Tray: run data pipeline");
+                worker.send(MoonwatcherSignal::RunPipeline);
             }
             ID_PAUSE => {
                 // The worker owns this state; we only ask it to flip. Both backends have
@@ -136,6 +155,7 @@ pub fn build_tray(context: TrayContext) -> Result<TrayHandle> {
     let mut handle = TrayHandle {
         tray,
         status_item,
+        pipeline_item,
         pause_item,
         open_logs_item,
         status,
@@ -153,17 +173,25 @@ impl UiRefresh for TrayHandle {
         let status = self.status.get();
         let icon = status.icon();
         let line = status.menu_line();
+        let pipeline_line = status.pipeline_menu_line();
 
-        let shown_icon = self.displayed.as_ref().map(|(icon, _)| *icon);
-        let unchanged = self.displayed.as_ref()
-            .is_some_and(|(_, shown_line)| shown_icon == Some(icon) && *shown_line == line);
-        if unchanged {
+        let shown = self.displayed.as_ref();
+        let shown_icon = shown.map(|shown| shown.icon);
+        // The pipeline is compared separately: it can start and finish without the recording
+        // status moving at all, and that still has to reach the menu.
+        let status_unchanged = shown.is_some_and(|shown| shown.line == line)
+            && shown_icon == Some(icon);
+        let pipeline_unchanged = shown.is_some_and(|shown| shown.pipeline_line == pipeline_line);
+        if status_unchanged && pipeline_unchanged {
             return;
         }
 
         // One line per state transition, and none while nothing changes: this is how a
-        // problem the user only saw in the tray can still be reconstructed afterwards.
-        log::info!("Tray status: {line} [{icon:?}]");
+        // problem the user only saw in the tray can still be reconstructed afterwards. The
+        // pipeline logs its own progress from the worker, so it is not repeated here.
+        if !status_unchanged {
+            log::info!("Tray status: {line} [{icon:?}]");
+        }
 
         if shown_icon != Some(icon) {
             match load_icon(icon_png(icon)) {
@@ -178,12 +206,17 @@ impl UiRefresh for TrayHandle {
         self.pause_item.set_checked(status.recording == RecordingState::Paused);
         self.open_logs_item.set_enabled(locked_output_dir(&self.output_dir).is_some());
 
+        self.pipeline_item.set_text(&pipeline_line);
+        // Disabled rather than silently ignoring the second click: the worker refuses one
+        // anyway, and a greyed-out item is what tells the user a run is still going.
+        self.pipeline_item.set_enabled(status.pipeline != PipelineState::Running);
+
         // Ignored by the appindicator backend on Linux; the status item covers that.
         if let Err(e) = self.tray.set_tooltip(Some(status.tooltip())) {
             log::warn!("Could not set tray tooltip: {e:?}");
         }
 
-        self.displayed = Some((icon, line));
+        self.displayed = Some(Displayed { icon, line, pipeline_line });
     }
 }
 

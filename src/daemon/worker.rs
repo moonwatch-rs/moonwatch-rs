@@ -7,6 +7,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -14,8 +15,9 @@ use crossbeam_channel::{Receiver, Sender};
 use log::{debug, error, info, warn};
 
 use crate::core::model::config::Config;
-use crate::daemon::status::{RecordingState, SharedStatus};
+use crate::daemon::status::{PipelineState, RecordingState, SharedStatus};
 use crate::daemon::tray::SharedOutputDir;
+use crate::pipeline;
 use crate::recorder::recorder::EventRecorder;
 use crate::sampler;
 use crate::sampler::desktop::Desktop;
@@ -32,6 +34,8 @@ pub enum MoonwatcherSignal {
     SetPaused(bool),
     /// Flush buffered events to disk right now, without terminating.
     WriteNow { done: Option<Ack> },
+    /// Run the ETL pipeline over the recorded logs, as `moonwatch_rs pipeline` does.
+    RunPipeline,
     /// Flush buffered events to disk and exit the worker loop.
     Terminate { done: Option<Ack> },
 }
@@ -253,6 +257,11 @@ fn idle_loop(config_path: &Path,
                 debug!("Nothing to write, no configuration is loaded");
                 acknowledge(done);
             }
+            MoonwatcherSignal::RunPipeline => {
+                // Nothing is buffered here, and the pipeline reads the configuration file
+                // itself - so a run is still worth starting even though ours would not load.
+                start_pipeline(config_path, status);
+            }
             MoonwatcherSignal::Terminate { done } => {
                 debug!("Nothing to write, no configuration is loaded");
                 acknowledge(done);
@@ -305,6 +314,12 @@ fn sampling_loop(active: Active,
                     }
                     MoonwatcherSignal::WriteNow { done } => {
                         write_events(&mut recorder, done);
+                    }
+                    MoonwatcherSignal::RunPipeline => {
+                        // The pipeline reads the log files, so anything still buffered here
+                        // would be missing from the output it is about to write.
+                        write_events(&mut recorder, None);
+                        start_pipeline(config_path, status);
                     }
                     MoonwatcherSignal::Terminate { done } => {
                         write_events(&mut recorder, done);
@@ -409,6 +424,59 @@ fn set_paused(state: &mut WorkerState, paused: bool) -> bool {
         state.sampling_problem = None;
     }
     true
+}
+
+/// Start the ETL pipeline on a thread of its own, unless one is already running.
+///
+/// Off the worker thread because a run over a long history takes far more than a sampling
+/// interval, and stalling the worker would both lose samples and leave the tray menu
+/// unanswered. The thread reads `main_config.json` again rather than sharing the worker's
+/// `Config`: the recorder borrows that for as long as it is buffering, and a run started by
+/// hand is rare enough that reading the file once more costs nothing.
+///
+/// Only the worker starts these, and it does so from its own single thread, so reading the
+/// published state is enough to stop two runs from writing the same output files at once.
+///
+/// The thread is deliberately not joined: quitting must not wait out a long run, and the
+/// pipeline only ever reads the recorded logs, so an interrupted run loses nothing but the
+/// output files it was about to replace.
+fn start_pipeline(config_path: &Path, status: &SharedStatus) {
+    if status.get().pipeline == PipelineState::Running {
+        warn!("The data pipeline is already running, ignoring the request");
+        return;
+    }
+
+    info!("Starting the data pipeline");
+    // Set before the spawn, so a second request cannot slip past the check above.
+    set_pipeline_state(status, PipelineState::Running);
+
+    let thread_config_path = config_path.to_path_buf();
+    let thread_status = status.clone();
+    let spawned = thread::Builder::new()
+        .name("moonwatch-pipeline".to_string())
+        .spawn(move || {
+            let outcome = match pipeline::run_pipeline(&thread_config_path) {
+                Ok(()) => PipelineState::Idle,
+                Err(e) => {
+                    // `{:?}` is the whole chain with its backtrace for the log; the tray
+                    // gets the one-line `{:#}` version, see `pipeline_menu_line`.
+                    error!("The data pipeline failed: {e:?}");
+                    PipelineState::Failed(format!("{e:#}"))
+                }
+            };
+            set_pipeline_state(&thread_status, outcome);
+        });
+
+    if let Err(e) = spawned {
+        error!("Could not start the data pipeline thread: {e:?}");
+        set_pipeline_state(status, PipelineState::Failed(format!("could not start it: {e}")));
+    }
+}
+
+/// Publish what the pipeline is doing. Written by the worker and by the pipeline thread;
+/// nothing else touches this field, so it survives the worker's own `publish`.
+fn set_pipeline_state(status: &SharedStatus, state: PipelineState) {
+    status.update(|status| status.pipeline = state);
 }
 
 /// Flush the buffer and, if someone is waiting on this write, tell them it is done.
@@ -691,6 +759,68 @@ mod tests {
             assert!(recovered.config_problem.is_none());
             assert_eq!(recovered.icon(), StatusIcon::Recording);
             assert!(fixture.log_folder().is_some());
+
+            fixture.shutdown();
+        }
+
+        /// The tray's "Run data pipeline" action, end to end: it must produce the same files
+        /// as `moonwatch_rs pipeline` without interrupting recording, and it must say when
+        /// it is done - a run nobody hears back from is the failure mode worth testing.
+        #[test]
+        fn running_the_pipeline_writes_its_output_and_leaves_recording_alone() {
+            let fixture = Fixture::start(VALID_MAIN_CONFIG);
+            fixture.wait_for("recording to start", |s| s.recording == RecordingState::Recording);
+
+            fixture.send(MoonwatcherSignal::RunPipeline);
+
+            let done = fixture.wait_for("the pipeline to finish",
+                                        |s| s.pipeline == PipelineState::Idle
+                                            && fixture.dir.join("output").exists());
+            assert_eq!(done.recording, RecordingState::Recording,
+                       "the pipeline runs beside the worker, not instead of it");
+            assert_eq!(done.icon(), StatusIcon::Recording);
+            assert_eq!(done.pipeline_menu_line(), "Run data pipeline");
+
+            // The same two files the `pipeline` subcommand writes, named by the configured
+            // output format.
+            for name in ["active_events.parquet", "unlock_events.parquet"] {
+                assert!(fixture.dir.join("output").join(name).exists(),
+                        "the pipeline should have written {name}");
+            }
+
+            fixture.shutdown();
+        }
+
+        /// The pipeline reads main_config.json itself, so it can fail where the worker is
+        /// happy - and with no console to print to, the tray menu is the only place the user
+        /// would ever learn that.
+        #[test]
+        fn a_pipeline_failure_is_reported_in_the_menu_without_stopping_the_daemon() {
+            // Broken at startup, so this also covers requesting a run from the idle loop,
+            // where there is no recorder to flush first.
+            let fixture = Fixture::start(BROKEN_MAIN_CONFIG);
+            fixture.wait_for("the startup failure to be reported", |s| s.config_problem.is_some());
+
+            fixture.send(MoonwatcherSignal::RunPipeline);
+
+            let failed = fixture.wait_for("the pipeline to report a failure", |s| {
+                matches!(s.pipeline, PipelineState::Failed(_))
+            });
+            assert!(failed.pipeline_menu_line()
+                        .starts_with("Run data pipeline - last run failed: could not read "),
+                    "got {:?}", failed.pipeline_menu_line());
+
+            // Fixing the file and running again clears it, so the menu never keeps showing a
+            // failure the user has already dealt with.
+            fixture.write_config(VALID_MAIN_CONFIG);
+            fixture.send(MoonwatcherSignal::ReloadConfig);
+            fixture.wait_for("recording to start after the fix",
+                             |s| s.recording == RecordingState::Recording);
+
+            fixture.send(MoonwatcherSignal::RunPipeline);
+            let recovered = fixture.wait_for("the second run to succeed",
+                                             |s| s.pipeline == PipelineState::Idle);
+            assert_eq!(recovered.pipeline_menu_line(), "Run data pipeline");
 
             fixture.shutdown();
         }
