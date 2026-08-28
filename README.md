@@ -1,269 +1,177 @@
-# Moonwatch.rs
-
 [![Moonwatch.rs build master branch](https://img.shields.io/github/actions/workflow/status/moonwatch-rs/moonwatch-rs/ci.yml?branch=master)](https://github.com/moonwatch-rs/moonwatch-rs/actions)
 
-🚧 _This is an early development version of the software._ 🚧
+# Moonwatch.rs
+
+🚧 _This is a personal project that's been running for a few years.
+It's useful, but expect roughness around the edges._ 🚧
 
 Moonwatch.rs is a privacy-focused digital wellbeing app. Get insights into how you
 spend your screen time – you choose what data is tracked and where it is stored.
 
-You can run Moonwatch.rs completely self-hosted on your desktop or laptop;
-aggregating data from multiple machines is also possible via a network drive or
-any of the "Shared Folder" cloud services (eg. Dropbox, OneDrive, MEGA, etc.).
+You can run Moonwatch.rs completely self-hosted on your Windows or Linux
+machine (for mobile, see [moonwatch-android](https://github.com/moonwatch-rs/moonwatch-android)).
+It is a decentralized system; each instance logs events independently and each
+can process the logs for further analysis.
 
-_Currently, Moonwatch.rs consists only of the `moonwatch_rs` daemon, which is a 
-background service recording active window at regular intervals and logging it
-into `.jsonl` files. More features including analytics and GUI are planned._
+If you want to aggregate data from multiple devices, just make sure the logs
+end up in a single location (using Syncthing, a network drive, a cloud service
+like Dropbox, OneDrive, MEGA, etc.).
 
-## The `moonwatch_rs` daemon
+## Supported platforms
 
-### Supported platforms
-
-- Linux (and other unix-like systems), GNOME, X11
-  - dependencies: `gnome-screensaver-command`, `xprintidle`, `xdotool`
-  - for the tray icon: GTK 3 and libappindicator (see [Tray icon](#tray-icon))
-  - tested on Ubuntu 22.04 LTS, Ubuntu 24.04 LTS
 - Windows
-  - no dependencies
-  - tested on Windows 10 22H2, Windows 11
+- Linux (and other unix-like systems), GNOME, X11
+  - dependencies: `gnome-screensaver-command`, `xprintidle`, `xdotool`, GTK 3, libappindicator
+- Android
+  - see [moonwatch-android](https://github.com/moonwatch-rs/moonwatch-android)
 
-### Tray icon
+## Installation and setup
 
-While running, `moonwatch_rs` shows a moon icon in the system tray. The icon tells you
-whether it is actually recording:
+There is a single binary, `moonwatch_rs`, which can install itself into `~/.moonwatch-rs`
+and set up autostart when you log in (using a Windows Run key or Systemd service), all
+by running the command:
 
-| icon | meaning |
-|---|---|
-| amber moon | configuration loaded, recording events |
-| grey moon | configuration loaded, recording paused |
-| grey moon with a red dot | something is wrong – see the menu for what |
-
-The first line of the context menu spells the same thing out in words, including the
-reason when there is a problem, for example
-`config.json could not be loaded: expected ',' or '}' at line 12 column 3 - previous
-settings still in use`. On Windows the tray tooltip says the same; on Linux it does not,
-because the AppIndicator backend has no tooltip support — read the menu instead.
-
-Two kinds of thing turn the icon red. One is `config.json` (see below). The other is the
-event gathering itself failing — `xdotool` or `xprintidle` no longer working, for instance,
-which is what a Wayland session looks like from here: `xdotool -h` succeeds at startup and
-then every real call fails. The menu then reads `Sampling failed - <what went wrong>`, and
-the icon clears itself as soon as a sample succeeds.
-
-Failures that are *routine* deliberately do **not** turn the icon red, or it would be red
-most of the time: nothing being focused (`xdotool getactivewindow` fails whenever focus is on
-the desktop), a locked screen, and not being able to read a process path. That last one
-happens on Windows for any elevated window — Task Manager, an admin editor — and such events
-are still recorded, just with `processPath: null`, rather than being dropped.
-
-The rest of the menu offers:
-
-- **Reload configuration** – re-read `config.json` (same as `SIGHUP` on Linux)
-- **Write events now** – flush buffered events to a `.jsonl` file immediately
-- **Run data pipeline** – the same ETL run as `moonwatch_rs pipeline`, over the recorded
-  logs and into `pipeline_output_directory`
-- **Pause recording** – stop sampling without stopping the daemon
-- **Open log folder** – open the configured `output_dir` (disabled until one is known)
-- **Open Moonwatch.rs folder** – open the directory holding `config.json` and the log
-- **Quit Moonwatch.rs** – write buffered events and exit
-
-**Run data pipeline** buffers nothing and blocks nothing: events still in memory are written
-out first, the pipeline then runs on a thread of its own while recording carries on, and the
-menu item reports back — it reads *Running data pipeline…* and is disabled while a run is in
-progress, and *Run data pipeline - last run failed: …* if one did. The full error is in
-`moonwatch_rs.log`. Quitting does not wait for a run to finish; nothing is lost if it is
-interrupted, since the pipeline only reads the logs.
-
-So a `config.json` you have broken is a self-service fix: the icon turns red, the menu says
-what the syntax error was, **Open Moonwatch.rs folder** takes you to the file, and
-**Reload configuration** picks up your correction. A configuration that fails to load does
-**not** stop the daemon — it keeps running (recording with the previous settings if it has
-any) so that the tray is still there to fix it from. On Linux that means
-`systemctl --user status moonwatch-rs` reports a healthy unit even when the configuration is
-broken; the icon and the log are what tell you otherwise.
-
-The daemon keeps working if no tray icon can be created (no display, missing libraries);
-it just logs a warning. Pass `--no-tray` to skip it deliberately — on Windows this only
-hides the icon, the clean-shutdown handling below stays active.
-
-On **Windows 11** new tray icons start out in the overflow flyout behind the `^` button;
-drag the moon onto the taskbar to keep it visible.
-
-On **Linux** the tray icon needs GTK 3 and an AppIndicator implementation
-(`sudo apt install libgtk-3-0 libayatana-appindicator3-1`; to build, the matching `-dev`
-packages). Note that **GNOME Shell has no built-in tray**: the icon is only displayed if
-the "AppIndicator and KStatusNotifierItem Support" extension is installed, which Ubuntu
-ships by default but stock Fedora/Debian GNOME does not.
-
-### Shutting down cleanly
-
-Recorded events are buffered in memory and only written out every `write_every_sec`, so
-stopping the daemon abruptly loses whatever has not been written yet.
-
-- On Linux, `SIGTERM` (ie. `systemctl --user stop`) triggers a final write.
-- On Windows, `moonwatch_rs` now owns a hidden window and answers `WM_QUERYENDSESSION` /
-  `WM_ENDSESSION`, so logging off, restarting and shutting down all flush the buffer
-  first. Previously the process had neither a console nor a window and got no notice at
-  all, which meant those events were lost.
-- Either way, **Quit Moonwatch.rs** in the tray menu writes everything out before exiting.
-
-Killing the process outright (`Stop-Process -Force`, `kill -9`) still loses the buffer;
-use **Write events now** or lower `write_every_sec` if that matters to you.
-
-### Diagnostics
-
-`moonwatch_rs` writes a log file next to `config.json`, `moonwatch_rs_rCURRENT.log`
-(rotated at 2 MB, three files kept). Set `MOONWATCH_LOG=debug` for per-sample detail.
-On Linux the log also goes to the systemd journal (`journalctl --user -u moonwatch-rs`).
-
-Every change of state is logged as a `Tray status:` line, so what the icon was showing at
-any point can be reconstructed afterwards. Configuration errors appear there in full, rather
-than clipped to fit a menu item.
-
-### Installation
-
-Moonwatch.rs is distributed as a single binary that installs itself. Download
-`moonwatch_rs-<version>-x86_64-windows.exe` from the
-[Releases page](https://github.com/moonwatch-rs/moonwatch-rs/releases) (or build it, see
-below), then run:
-
-```sh
+```
 moonwatch_rs install
 ```
 
-That copies the binary into `~/.moonwatch-rs`, writes the default configuration there
-(`main_config.json`, `recorder_config.json`, `pipeline_config.json` and the JSON schemas
-they refer to), registers itself to start when you log in, and starts it straight away.
-`--dir` installs somewhere other than `~/.moonwatch-rs`.
+After installation, a tray icon will appear in your desktop. Use it to navigate into
+the `~/.moonwatch-rs`. There are multiple JSON configuration files which are best edited
+using VS Code which will give you suggestions and validation through the provided JSON schemas.
 
-Running `install` again is how you **upgrade**: the running daemon is asked to write out its
-buffered events and exit, the binary is replaced, and the daemon is started again.
-Configuration files you have edited are never overwritten – only the schemas in
-`~/.moonwatch-rs/schemas` are refreshed, so that your editor points out anything an older
-configuration needs. Progress is printed to the terminal and also ends up in
-`~/.moonwatch-rs/moonwatch_rs.log`.
+## Architecture
 
-`--files-only` stops after the part that lands inside the directory. The binary is copied and
-the configuration and schemas are written exactly as above, but nothing is stopped or
-started, and no autostart entry is made — the machine you run it on is left alone. Use it to
-prepare an installation directory you will start yourself, to seed a directory to point
-`--config` at, or to refresh the schemas of an existing installation without restarting it.
+(Your Desktop) → **Sampler** → **Recorder** → (events written to disk as JSON) → **Pipeline** → (Parquet/CSV bundle)
 
-Once installed:
+There is a background service running the `moonwatch_rs watch` command, which periodically polls
+your desktop and logs events to disk. This service also has a tray icon which you can use
+to interact with it, see if it's running, and manually trigger an ETL-like pipeline that
+processes all the logs into one big bundle.
 
-- events are written to `~/.moonwatch-rs/logs`
-- to customize, edit `~/.moonwatch-rs/main_config.json` – reachable via **Open Moonwatch.rs
-  folder** in the tray menu
+### Sampler and Recorder
 
-#### Linux
+Sampler is the component that periodically gathers information from your OS and produces events
+that the Recorder does some user-defined processing on before eventually flushing them onto disk.
 
-Tested on Ubuntu 24.04 LTS.
+At this time, there are these events:
 
-- `sudo apt install gnome-screensaver xprintidle xdotool libgtk-3-0 libayatana-appindicator3-1`
-  (`install` warns if the first three are missing, but installs anyway)
-- Build with `./build_linux.py`, or `cargo build --release`; then run `moonwatch_rs install`
-  from the resulting package.
-- Autostart is a Systemd user service, `~/.config/systemd/user/moonwatch-rs.service`.
-  - To check up on the daemon, run `systemctl --user status moonwatch-rs`
-  - To reload config, run `systemctl --user reload moonwatch-rs`
-  - To stop it, run `systemctl --user stop moonwatch-rs` (this flushes buffered events)
+- `ActiveWindowEventV1` (desktop only) - information about the active window on your desktop,
+  including its process and window title (this is only used for Recorder rules, never written to disk)
+- `ActiveActivityEventV1` (mobile only) - information about the active Android activity
+- `DeviceUnlockEventV1` (mobile only) - information about Android device unlock
 
-To build from source you additionally need `libgtk-3-dev` and
-`libayatana-appindicator3-dev`.
+The desktop app has configurable Recorder using the config `recorder_config.json`. Here is an
+example of what you can do:
 
-#### Windows
-
-- Build with `build_windows.py` (cross-compiles from Linux) or `cargo build --release`; then
-  run `moonwatch_rs.exe install`.
-- Autostart is a `Moonwatch.rs` value under
-  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Installing also removes the Startup
-  folder shortcut that older versions used, so that you are not started twice.
-  - To stop it, use **Quit Moonwatch.rs** in the tray menu
-  - Buffered events are written out automatically when you log off, restart or shut down
-
-### CLI
-
-```sh
-moonwatch_rs install     # install into ~/.moonwatch-rs and start at login
-moonwatch_rs watch       # run the daemon (this is what autostart runs)
-moonwatch_rs pipeline    # run the ETL pipeline over the recorded logs
-```
-
-- `--config <MAIN_CONFIG.JSON>` – configuration to use; defaults to `main_config.json` next
-  to the executable. Has no effect on `install`, which takes `--dir` instead.
-- `watch --no-tray` – do not create a tray icon
-- `install --dir <DIR>` – install somewhere other than `~/.moonwatch-rs`
-- `install --files-only` – only write the files into the directory: do not stop or start the
-  daemon, and do not register it to start at login
-
-### JSON configuration
-
-The overall structure is as follows (relative paths are taken to start in the directory where the JSON config is located):
-
-- `"main"` (object)
-  - `"output_dir"` (string)
-    - path to directory where event logs are stored
-  - `"sample_every_sec"` (number)
-    - delay between sampling (seconds)
-  - `"write_every_sec"` (number)
-    - delay between writing samples to a file (seconds)
-  - `"path_to_base_config"` (string or null)
-    - path to another .json configuration file from which "ignore", "anonymize" and "tags" definitions will be read and added to definitions in this config file
-    - this is useful for sharing settings across different systems
-- `"ignore"` (object, array or null)
-  - one or more `WindowEventMatcher` objects (see below)
-  - events that match will not be recorded at all
-- `"anonymize"` (object, array or null)
-  - one or more `WindowEventMatcher` objects (see below)
-  - events that match will be recorded in redacted from
-- `"tags"` (object)
-  - `"<tag name>"` (object, array or null)
-    - one or more `WindowEventMatcher` objects (see below)
-    - events that match will get assigned `"<tag name>"` in output
-
-A `WindowEventMatcher` definition is an object with at least one of the following keys:
-
-- `"window_title"` (string)
-  - a regular expression (`regex::Regex`) that is tested against window title
-- `"process_path"` (string)
-  - a regular expression (`regex::Regex`) that is tested against process path
-
-The `WindowEventMatcher` definition is used to match events – an event must match
-all predicates defined by given `WindowEventMatcher` (AND semantics). If you want
-OR semantics, just define multiple `WindowEventMatcher`s.
-
-Full configuration example:
+- redact events
+- tag events based on their properties (this is mostly useful to account for `windowTitle`
+  which is not available in later processing stages)
 
 ```json
 {
-  "main": {
-    "output_dir": "./logs",
-    "sample_every_sec": 15,
-    "write_every_sec": 21600,
-    "path_to_base_config": null
-  },
-  "ignore": [{
-    "window_title": "title to ignore"
-  }],
-  "anonymize": [{
-    "window_title": "title to anonymize"
-  }],
-  "tags": {
-    "youtube": [{
-        "window_title": "YouTube — Mozilla Firefox$",
-        "process_name": "firefox(\\.exe)?$"
+  "$schema": "./schemas/recorder_config.schema.json",
+  "activeWindowEventRules": [
+    {
+      "predicate": {
+        "attributeRegex": {
+          "name": "processPath",
+          "regex": "Microsoft\\.LockApp|Windows\\\\explorer.exe"
+        }
       },
-      {
-        "window_title": "YouTube — Mozilla Firefox$",
-        "process_name": "chrome(\\.exe)?$"
-      }
-    ],
-    "pycharm": {
-      "process_path": "JetBrains/Toolbox/apps/PyCharm"
+      "actions": ["delete"]
     },
-    "clion": {
-      "process_path": "JetBrains/Toolbox/apps/CLion"
+    {
+      "predicate": {
+        "attributeRegex": {
+          "name": "processName",
+          "regex": "firefox|chrome|brave"
+        }
+      },
+      "actions": [{"addTag": "browser"}]
+    },
+    {
+      "predicate": {
+        "and": [
+          {"hasTag": "browser"},
+          {
+            "attributeRegex": {
+              "name": "windowTitle",
+              "regex": "YouTube [-–—] (Mozilla Firefox|Google Chrome|Brave)$"
+            }
+          }
+        ]
+      },
+      "actions": [{"addTag": "youtube"}]
     }
-  }
+  ]
+}
+```
+
+### Event log storage
+
+This is preferably pointed into some "shared folder" in `main_config.json` (it is useful to put your
+recorder and pipeline configs into a shared location, too). Here, the Recorder will periodically write
+a JSONL file (one JSON object per line) with all the events, using a UUIDv7 filename so that it is unique.
+
+Event log compaction into `.jsonl.gz` is also supported, though Moonwatch.rs currently does not provide a way to produce these files;
+however, Pipeline can ingest them.
+
+### ETL-like pipeline
+
+Pipeline is what takes the sum of all your desktop and mobile logs, unifies them into one `ActiveEvent`
+structure, applies another set of rules similar to what Recorder does, and finally writes it all out
+as a `.parquet` or `.csv` file. Currently, this is where the pipeline ends, though a Grafana setup
+may be provided in the future.
+
+The desktop app has configurable Pipeline using the config `pipeline_config.json`.
+It can be triggered from the tray icon menu or by running `moonwatch_rs pipeline`.
+Here is an example of what you can do:
+
+- assign categories (events can have multiple tags but only a single category)
+- remove periods of idle activity
+- split long events into multiple smaller ones for easier aggregation (currently not implemented)
+
+```json
+{
+  "$schema": "./schemas/pipeline_config.schema.json",
+  "activeEventRules": [
+    {
+      "predicate": {
+        "attributeRegex": {
+          "name": "name",
+          "regex": "vlc|mpc-hc64"
+        }
+      },
+      "actions": [
+        {"addTag": "video"},
+        {"setAttribute": {"name": "category", "value": "video"}}]
+    },
+    {
+      "predicate": {
+        "and": [
+          {"idleForGreaterThanSec": 300},
+          {
+            "not": {
+              "or": [
+                {"hasTag": "youtube"},
+                {"hasTag": "video"}]}}]
+      },
+      "actions": ["ignore"]
+    },
+    {
+      "predicate": {
+        "attributeRegex": {
+          "name": "processPath",
+          "regex": "[\\\\/](steamapps|GOG Galaxy|GOGLibrary|Games)[\\\\/]"
+        }
+      },
+      "actions": [
+        {
+          "setAttribute": {
+            "name": "category",
+            "value": "gaming"
+          }}]}
+  ],
+  "activeEventMaxDuration": 600
 }
 ```
