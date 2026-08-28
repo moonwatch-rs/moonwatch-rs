@@ -143,6 +143,12 @@ Configuration files you have edited are never overwritten – only the schemas i
 configuration needs. Progress is printed to the terminal and also ends up in
 `~/.moonwatch-rs/moonwatch_rs.log`.
 
+`--files-only` stops after the part that lands inside the directory. The binary is copied and
+the configuration and schemas are written exactly as above, but nothing is stopped or
+started, and no autostart entry is made — the machine you run it on is left alone. Use it to
+prepare an installation directory you will start yourself, to seed a directory to point
+`--config` at, or to refresh the schemas of an existing installation without restarting it.
+
 Once installed:
 
 - events are written to `~/.moonwatch-rs/logs`
@@ -187,6 +193,8 @@ moonwatch_rs pipeline    # run the ETL pipeline over the recorded logs
   to the executable. Has no effect on `install`, which takes `--dir` instead.
 - `watch --no-tray` – do not create a tray icon
 - `install --dir <DIR>` – install somewhere other than `~/.moonwatch-rs`
+- `install --files-only` – only write the files into the directory: do not stop or start the
+  daemon, and do not register it to start at login
 
 ### JSON configuration
 

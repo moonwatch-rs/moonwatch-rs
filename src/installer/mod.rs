@@ -10,6 +10,9 @@
 //! already running: a busy executable cannot be replaced on either platform, and leaving the
 //! old process alive would mean two daemons sampling the same session. Configuration written
 //! by an earlier install is never overwritten.
+//!
+//! [`InstallMode::FilesOnly`] stops after the part that lands inside the installation
+//! directory, for preparing one without disturbing the machine it is prepared on.
 
 pub mod platforms;
 
@@ -26,15 +29,39 @@ use crate::sampler;
 /// happened to be called.
 pub const EXECUTABLE_NAME: &str = if cfg!(windows) { "moonwatch_rs.exe" } else { "moonwatch_rs" };
 
-/// Install into `moonwatch_dir` and start the daemon.
+/// How much of an installation to carry out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallMode {
+    /// The whole thing: stop what is running, lay the files down, register autostart, start it.
+    Full,
+    /// Only what lands inside `moonwatch_dir`. Nothing outside it is read or written, and no
+    /// process is stopped or started.
+    FilesOnly,
+}
+
+/// Install into `moonwatch_dir`, and - unless `mode` says otherwise - start the daemon.
 ///
 /// The steps are ordered around the fact that a running executable cannot be overwritten:
 /// stop first, copy second. Everything is idempotent, so this doubles as the upgrade path.
-pub fn install(moonwatch_dir: &Path) -> Result<()> {
+///
+/// [`InstallMode::FilesOnly`] does the copying and the configuration writing and nothing
+/// else, which is how an installation directory is prepared on a machine that should not
+/// start running it: a build host, a headless box, or somewhere the daemon is already
+/// installed and only the schemas need refreshing.
+pub fn install(moonwatch_dir: &Path, mode: InstallMode) -> Result<()> {
     let source_exe = std::env::current_exe()
         .context("could not determine the path of the moonwatch_rs executable")?;
 
     info!("Installing Moonwatch.rs into {}", moonwatch_dir.display());
+
+    if mode == InstallMode::FilesOnly {
+        // No desktop probe either: the point of this mode is to leave the machine alone, and
+        // asking whether *this* one could record says nothing about the one that will.
+        install_files(moonwatch_dir, &source_exe)?;
+        info!("Wrote the installation files only: nothing was stopped or started, \
+               and no autostart entry was made");
+        return Ok(());
+    }
 
     // Only a warning: an installation on a machine that cannot sample right now (a headless
     // box being set up, a missing xdotool) is still worth completing.

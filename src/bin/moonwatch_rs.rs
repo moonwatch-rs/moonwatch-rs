@@ -12,6 +12,7 @@ use log::info;
 
 use moonwatch_rs::core::common::{config_dir, moonwatch_dir_in_home};
 use moonwatch_rs::core::model::config::MAIN_CONFIG_FILE_NAME;
+use moonwatch_rs::installer::InstallMode;
 use moonwatch_rs::{daemon, installer, pipeline};
 
 /// Moonwatch.rs - a privacy-focused digital wellbeing app
@@ -34,10 +35,19 @@ enum Command {
     /// an existing installation upgrades it: the daemon is stopped, the executable replaced
     /// and the daemon started again, while any configuration you have edited is left alone.
     /// The global --config option has no effect here, use --dir instead.
+    ///
+    /// Pass --files-only to prepare the directory without touching the machine you are
+    /// running on: the files are written, but nothing is stopped or started and no autostart
+    /// entry is made.
     Install {
         /// directory to install into (default: ~/.moonwatch-rs)
         #[arg(long, value_name = "DIR")]
         dir: Option<PathBuf>,
+
+        /// only write the files into the directory: do not stop or start the daemon, and do
+        /// not register it to start at login
+        #[arg(long)]
+        files_only: bool,
     },
 
     /// Run the Moonwatch.rs daemon: sample the active window and record events
@@ -57,8 +67,8 @@ fn main() -> Result<()> {
 
     let cli = MoonwatcherCli::parse();
 
-    if let Command::Install { dir } = cli.command {
-        return run_install(dir);
+    if let Command::Install { dir, files_only } = cli.command {
+        return run_install(dir, files_only);
     }
 
     let config_path = match cli.config {
@@ -85,7 +95,10 @@ fn main() -> Result<()> {
 /// Logging is set up in the installation directory rather than next to the executable, which
 /// at this point is wherever the binary was downloaded to. The directory has to exist for
 /// that, so it is created here rather than by the installer.
-fn run_install(dir: Option<PathBuf>) -> Result<()> {
+///
+/// `files_only` still logs to the installation directory, so a run that deliberately did
+/// nothing else is diagnosable exactly like a full one.
+fn run_install(dir: Option<PathBuf>, files_only: bool) -> Result<()> {
     let moonwatch_dir = match dir {
         // The autostart entry has to name the installation in a way that still means the
         // same thing when the user logs in, so a relative `--dir` is resolved now, against
@@ -103,7 +116,8 @@ fn run_install(dir: Option<PathBuf>) -> Result<()> {
     let _logger = init_logging(&moonwatch_dir)?;
 
     info!("--- Moonwatch ---");
-    installer::install(&moonwatch_dir)
+    let mode = if files_only { InstallMode::FilesOnly } else { InstallMode::Full };
+    installer::install(&moonwatch_dir, mode)
 }
 
 /// Where the configuration lives when the user did not say.

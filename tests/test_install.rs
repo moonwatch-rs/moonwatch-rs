@@ -2,7 +2,7 @@ use std::fs;
 
 use tempfile::tempdir;
 
-use moonwatch_rs::installer::{install_files, EXECUTABLE_NAME};
+use moonwatch_rs::installer::{install, install_files, InstallMode, EXECUTABLE_NAME};
 
 /// Everything `moonwatch_rs install` puts into the installation directory. The autostart
 /// entry and the running daemon are deliberately left out - those are what `install_files`
@@ -75,4 +75,24 @@ fn test_install_files_from_the_installation_itself() {
 
     assert_eq!(fs::read(&installed_exe).unwrap(), EXECUTABLE_CONTENT,
                "the installed executable was destroyed by copying it onto itself");
+}
+
+/// `install --files-only` through the real entry point, which the full mode could never be
+/// tested through: that this test runs to completion and leaves nothing but a temporary
+/// directory behind *is* the assertion. `InstallMode::Full` would have stopped a running
+/// daemon, written a registry key or a Systemd unit, and spawned a process.
+///
+/// The source executable is this test binary, because `install` resolves `current_exe`
+/// itself - that is the price of exercising the entry point rather than a stand-in.
+#[test]
+fn test_install_files_only_installs_everything_without_touching_the_machine() {
+    let root = tempdir().unwrap();
+    let moonwatch_dir = root.path().join(".moonwatch-rs");
+
+    install(&moonwatch_dir, InstallMode::FilesOnly).unwrap();
+
+    for name in INSTALLED_FILES {
+        let path = moonwatch_dir.join(name);
+        assert!(path.is_file(), "{} was not installed", path.display());
+    }
 }
