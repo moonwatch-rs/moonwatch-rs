@@ -23,7 +23,7 @@ fn main() {
     // What Explorer shows under Properties > Details. Both default to the Cargo package
     // name, `moonwatch-rs`, which is the name of the crate rather than of the program.
     resources.set("ProductName", "Moonwatch.rs");
-    resources.set("FileDescription", env!("CARGO_PKG_DESCRIPTION"));
+    resources.set("FileDescription", &format!("Moonwatch.rs - {}", env!("CARGO_PKG_DESCRIPTION")));
 
     // Deliberately fatal: a binary that silently lost its icon looks like a bad build, and
     // the resource compiler is part of both toolchains we build Windows with anyway.
