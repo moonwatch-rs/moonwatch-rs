@@ -23,6 +23,17 @@ struct MoonwatcherCli {
     #[arg(long, short = 'c', value_name = "MAIN_CONFIG.JSON", global = true)]
     config: Option<PathBuf>,
 
+    /// do not write to the console of the shell that started us (Windows only)
+    ///
+    /// Everything that would have gone there - --help, usage errors, the progress of
+    /// `install` - is then lost, while the log file still gets it all. Use this when
+    /// Moonwatch.rs is launched from a console that must be left alone.
+    // Declared here so that it is documented and accepted like any other option; the flag
+    // itself is read straight from the raw arguments in main(), before clap parses.
+    #[arg(long, global = true)]
+    #[allow(dead_code)]
+    no_attach_console: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -62,8 +73,11 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    // Before parsing, so that --help and clap's usage errors are visible too.
-    attach_parent_console();
+    // Before parsing, so that --help and clap's usage errors are visible too - which is why
+    // --no-attach-console is looked for in the arguments here rather than read off `cli`.
+    if !no_attach_console_given(std::env::args()) {
+        attach_parent_console();
+    }
 
     let cli = MoonwatcherCli::parse();
 
@@ -165,6 +179,18 @@ fn init_logging(log_dir: &Path) -> Result<LoggerHandle> {
     Ok(logger)
 }
 
+/// Whether `--no-attach-console` was passed.
+///
+/// A hand scan of the raw arguments, because the decision comes before clap gets to parse
+/// them. Anything after a bare `--` is an operand rather than an option, so it is left
+/// alone, the way clap would read it.
+fn no_attach_console_given(args: impl IntoIterator<Item = String>) -> bool {
+    args.into_iter()
+        .skip(1)
+        .take_while(|arg| arg != "--")
+        .any(|arg| arg == "--no-attach-console")
+}
+
 /// Write to the console of whoever launched us, if there is one.
 ///
 /// The binary is built for the Windows subsystem so that starting at login does not flash a
@@ -173,7 +199,8 @@ fn init_logging(log_dir: &Path) -> Result<LoggerHandle> {
 /// for the interactive case and does nothing at login, where there is no parent console.
 ///
 /// Note that the shell does not wait for a windows-subsystem process, so its prompt comes
-/// back before our output does.
+/// back before our output does. Pass `--no-attach-console` to keep out of that console
+/// altogether.
 #[cfg(windows)]
 fn attach_parent_console() {
     use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
@@ -185,3 +212,31 @@ fn attach_parent_console() {
 
 #[cfg(not(windows))]
 fn attach_parent_console() {}
+
+#[cfg(test)]
+mod tests {
+    use super::no_attach_console_given;
+
+    fn given(args: &[&str]) -> bool {
+        no_attach_console_given(args.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn spots_the_flag_wherever_it_is_given() {
+        assert!(given(&["moonwatch_rs", "--no-attach-console", "watch"]));
+        assert!(given(&["moonwatch_rs", "watch", "--no-attach-console"]));
+    }
+
+    #[test]
+    fn absent_flag_leaves_the_console_attached() {
+        assert!(!given(&["moonwatch_rs", "watch"]));
+        assert!(!given(&["moonwatch_rs"]));
+        // The executable's own name is not an argument.
+        assert!(!given(&["--no-attach-console"]));
+    }
+
+    #[test]
+    fn ignores_operands_after_a_double_dash() {
+        assert!(!given(&["moonwatch_rs", "watch", "--", "--no-attach-console"]));
+    }
+}
